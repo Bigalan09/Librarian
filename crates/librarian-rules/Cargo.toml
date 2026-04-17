@@ -1,0 +1,16 @@
+[package]
+name = "librarian-rules"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+librarian-core.workspace = true
+globset.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

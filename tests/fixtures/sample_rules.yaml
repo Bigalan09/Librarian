@@ -1,0 +1,36 @@
+rules:
+  - name: "Work invoices"
+    match:
+      extension: "pdf"
+      filename: "*invoice*"
+    destination: "{year}/Work/Invoices"
+    tags: ["invoice", "work"]
+
+  - name: "Screenshots"
+    match:
+      filename: "regex:^Screenshot \\d{4}-\\d{2}-\\d{2}"
+      extension: "png"
+    destination: "{year}/Personal/Screenshots"
+    tags: ["screenshot"]
+    clean_name: true
+
+  - name: "CSV data files"
+    match:
+      extension: "csv"
+    destination: "{year}/Work/Data"
+    tags: ["data"]
+
+  - name: "Markdown notes"
+    match:
+      extension: "md"
+      path: "*/Downloads/*"
+    destination: "{year}/Personal/Notes"
+    tags: ["notes"]
+
+  - name: "Photos"
+    match:
+      extension: "png"
+      filename: "regex:^IMG_\\d{4}"
+    destination: "{year}/Personal/Photos"
+    tags: ["photo"]
+    clean_name: true

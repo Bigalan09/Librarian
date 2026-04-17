@@ -1,0 +1,26 @@
+inbox_folders:
+  - ~/Downloads
+  - ~/Desktop
+
+destination_root: ~/Library-Managed
+
+needs_review_path: ~/Library-Managed/NeedsReview
+trash_path: ~/Library-Managed/_Trash
+
+provider:
+  provider_type: lmstudio
+  base_url: "http://localhost:1234/v1"
+  api_key: null
+  llm_model: null
+  embed_model: null
+  rate_limit_rpm: null
+
+thresholds:
+  filename_embedding: 0.80
+  content_embedding: 0.75
+  llm_confidence: 0.70
+
+correction_window_days: 14
+max_moves_per_run: 500
+fewshot_count: 20
+rule_suggestion_threshold: 3

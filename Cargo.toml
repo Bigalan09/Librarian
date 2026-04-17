@@ -1,0 +1,83 @@
+[workspace]
+members = [
+    "crates/librarian-core",
+    "crates/librarian-rules",
+    "crates/librarian-providers",
+    "crates/librarian-classifier",
+    "crates/librarian-learning",
+    "crates/librarian-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+# Serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Hashing
+blake3 = "1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Progress bars
+indicatif = "0.17"
+
+# Glob matching
+globset = "0.4"
+regex = "1"
+
+# Ignore files (gitignore syntax)
+ignore = "0.4"
+
+# macOS extended attributes
+xattr = "1"
+plist = "1"
+
+# msgpack
+rmp-serde = "1"
+
+# Vector DB
+qdrant-client = "1"
+
+# File watching
+notify = "7"
+
+# PDF text extraction
+pdf-extract = "0.7"
+
+# Testing
+mockito = "1"
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+# Internal crates
+librarian-core = { path = "crates/librarian-core" }
+librarian-rules = { path = "crates/librarian-rules" }
+librarian-providers = { path = "crates/librarian-providers" }
+librarian-classifier = { path = "crates/librarian-classifier" }
+librarian-learning = { path = "crates/librarian-learning" }

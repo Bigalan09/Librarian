@@ -31,18 +31,18 @@
 
 **Purpose**: Cargo workspace initialisation and shared project scaffolding
 
-- [ ] T001 {sonnet} Create Cargo workspace root `Cargo.toml` with 6 member crates (librarian-core, librarian-rules, librarian-providers, librarian-classifier, librarian-learning, librarian-cli)
-- [ ] T002 [P] {haiku} Create `crates/librarian-core/Cargo.toml` with dependencies: serde, serde_json, serde_yaml, blake3, chrono, thiserror, tracing, xattr, plist, ignore (plist for Finder tag binary plist encoding, ignore for gitignore-syntax .librarianignore parsing)
-- [ ] T003 [P] {haiku} Create `crates/librarian-rules/Cargo.toml` with dependencies: globset, regex, serde, serde_yaml, thiserror, librarian-core
-- [ ] T004 [P] {haiku} Create `crates/librarian-providers/Cargo.toml` with dependencies: reqwest, tokio, serde, serde_json, rmp-serde, thiserror, tracing, librarian-core
-- [ ] T005 [P] {haiku} Create `crates/librarian-classifier/Cargo.toml` with dependencies: qdrant-client, librarian-core, librarian-providers, librarian-rules, thiserror, tracing
-- [ ] T006 [P] {haiku} Create `crates/librarian-learning/Cargo.toml` with dependencies: notify, librarian-core, librarian-providers, thiserror, tracing
-- [ ] T007 [P] {haiku} Create `crates/librarian-cli/Cargo.toml` with dependencies: clap (derive), tokio, indicatif, tracing-subscriber, all librarian-* crates; dev-dependencies: assert_cmd, tempfile, mockito, predicates
-- [ ] T008 [P] {haiku} Create `tests/fixtures/sample_rules.yaml` with example rules covering glob and regex patterns per research R12
-- [ ] T009 [P] {haiku} Create `tests/fixtures/sample_config.yaml` with default config per AppConfig data model
-- [ ] T010 [P] {haiku} Create `tests/fixtures/sample_files/` directory with test files: 3 PDFs, 2 PNGs, 1 CSV, 1 markdown, 1 plain text
-- [ ] T011 {haiku} Create `.gitignore` with Rust defaults (target/, *.swp, .env) and Librarian-specific exclusions
-- [ ] T012 {sonnet} Create `crates/librarian-cli/src/main.rs` with clap App skeleton — all v1 subcommands defined with argument structs but stubbed handlers, plus global --verbose/--json/--quiet flags per `contracts/cli-commands.md`
+- [x] T001 {sonnet} Create Cargo workspace root `Cargo.toml` with 6 member crates (librarian-core, librarian-rules, librarian-providers, librarian-classifier, librarian-learning, librarian-cli)
+- [x] T002 [P] {haiku} Create `crates/librarian-core/Cargo.toml` with dependencies: serde, serde_json, serde_yaml, blake3, chrono, thiserror, tracing, xattr, plist, ignore (plist for Finder tag binary plist encoding, ignore for gitignore-syntax .librarianignore parsing)
+- [x] T003 [P] {haiku} Create `crates/librarian-rules/Cargo.toml` with dependencies: globset, regex, serde, serde_yaml, thiserror, librarian-core
+- [x] T004 [P] {haiku} Create `crates/librarian-providers/Cargo.toml` with dependencies: reqwest, tokio, serde, serde_json, rmp-serde, thiserror, tracing, librarian-core
+- [x] T005 [P] {haiku} Create `crates/librarian-classifier/Cargo.toml` with dependencies: qdrant-client, librarian-core, librarian-providers, librarian-rules, thiserror, tracing
+- [x] T006 [P] {haiku} Create `crates/librarian-learning/Cargo.toml` with dependencies: notify, librarian-core, librarian-providers, thiserror, tracing
+- [x] T007 [P] {haiku} Create `crates/librarian-cli/Cargo.toml` with dependencies: clap (derive), tokio, indicatif, tracing-subscriber, all librarian-* crates; dev-dependencies: assert_cmd, tempfile, mockito, predicates
+- [x] T008 [P] {haiku} Create `tests/fixtures/sample_rules.yaml` with example rules covering glob and regex patterns per research R12
+- [x] T009 [P] {haiku} Create `tests/fixtures/sample_config.yaml` with default config per AppConfig data model
+- [x] T010 [P] {haiku} Create `tests/fixtures/sample_files/` directory with test files: 3 PDFs, 2 PNGs, 1 CSV, 1 markdown, 1 plain text
+- [x] T011 {haiku} Create `.gitignore` with Rust defaults (target/, *.swp, .env) and Librarian-specific exclusions
+- [x] T012 {sonnet} Create `crates/librarian-cli/src/main.rs` with clap App skeleton — all v1 subcommands defined with argument structs but stubbed handlers, plus global --verbose/--json/--quiet flags per `contracts/cli-commands.md`
 
 **Checkpoint**: `cargo build` succeeds, `cargo test` passes (no tests yet), all crates compile
 
