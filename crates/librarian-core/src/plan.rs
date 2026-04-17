@@ -226,7 +226,7 @@ impl Plan {
             }
         }
         // Sort by creation time, newest first.
-        plans.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        plans.sort_by_key(|p| std::cmp::Reverse(p.created_at));
         Ok(plans)
     }
 
@@ -652,25 +652,23 @@ impl Plan {
                 }
 
                 match action.action_type {
-                    ActionType::Move | ActionType::NeedsReview | ActionType::Rename => {
-                        if action.destination_path.exists() {
-                            if let Some(parent) = action.source_path.parent() {
-                                let _ = std::fs::create_dir_all(parent);
-                            }
-                            std::fs::rename(&action.destination_path, &action.source_path)
-                                .with_context(|| {
-                                    format!(
-                                        "rollback move {} -> {}",
-                                        action.destination_path.display(),
-                                        action.source_path.display()
-                                    )
-                                })?;
+                    ActionType::Move | ActionType::NeedsReview | ActionType::Rename
+                        if action.destination_path.exists() =>
+                    {
+                        if let Some(parent) = action.source_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
                         }
+                        std::fs::rename(&action.destination_path, &action.source_path)
+                            .with_context(|| {
+                                format!(
+                                    "rollback move {} -> {}",
+                                    action.destination_path.display(),
+                                    action.source_path.display()
+                                )
+                            })?;
                     }
-                    ActionType::Tag => {
-                        if action.source_path.exists() {
-                            let _ = crate::tags::remove_tags(&action.source_path);
-                        }
+                    ActionType::Tag if action.source_path.exists() => {
+                        let _ = crate::tags::remove_tags(&action.source_path);
                     }
                     _ => {}
                 }

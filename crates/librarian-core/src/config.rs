@@ -39,19 +39,14 @@ impl Default for Thresholds {
 }
 
 /// AI provider type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderType {
+    #[default]
     #[serde(alias = "lmstudio")]
     LmStudio,
     #[serde(alias = "openai")]
     OpenAi,
-}
-
-impl Default for ProviderType {
-    fn default() -> Self {
-        Self::LmStudio
-    }
 }
 
 /// AI provider configuration.
