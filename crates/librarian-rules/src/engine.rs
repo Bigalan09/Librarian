@@ -106,13 +106,15 @@ fn matches_path(mc: &MatchCriteria, entry: &FileEntry) -> bool {
 /// Size: min_size and max_size bounds.
 fn matches_size(mc: &MatchCriteria, entry: &FileEntry) -> bool {
     if let Some(min) = mc.min_size
-        && entry.size_bytes < min {
-            return false;
-        }
+        && entry.size_bytes < min
+    {
+        return false;
+    }
     if let Some(max) = mc.max_size
-        && entry.size_bytes > max {
-            return false;
-        }
+        && entry.size_bytes > max
+    {
+        return false;
+    }
     true
 }
 
@@ -170,10 +172,22 @@ rules:
 "#,
         );
 
-        let entry = make_entry("my_invoice_2025.pdf", Some("pdf"), 100, "/tmp/my_invoice_2025.pdf", "Downloads");
+        let entry = make_entry(
+            "my_invoice_2025.pdf",
+            Some("pdf"),
+            100,
+            "/tmp/my_invoice_2025.pdf",
+            "Downloads",
+        );
         assert_eq!(engine.evaluate(&entry).unwrap().name, "Invoices");
 
-        let entry2 = make_entry("readme.txt", Some("txt"), 50, "/tmp/readme.txt", "Downloads");
+        let entry2 = make_entry(
+            "readme.txt",
+            Some("txt"),
+            50,
+            "/tmp/readme.txt",
+            "Downloads",
+        );
         assert!(engine.evaluate(&entry2).is_none());
     }
 
@@ -234,10 +248,22 @@ rules:
 "#,
         );
 
-        let entry = make_entry("file.txt", Some("txt"), 100, "/Users/me/Downloads/file.txt", "Downloads");
+        let entry = make_entry(
+            "file.txt",
+            Some("txt"),
+            100,
+            "/Users/me/Downloads/file.txt",
+            "Downloads",
+        );
         assert_eq!(engine.evaluate(&entry).unwrap().name, "Downloads");
 
-        let entry2 = make_entry("file.txt", Some("txt"), 100, "/Users/me/Desktop/file.txt", "Desktop");
+        let entry2 = make_entry(
+            "file.txt",
+            Some("txt"),
+            100,
+            "/Users/me/Desktop/file.txt",
+            "Desktop",
+        );
         assert!(engine.evaluate(&entry2).is_none());
     }
 
@@ -255,15 +281,33 @@ rules:
         );
 
         // Both match
-        let entry = make_entry("invoice_01.pdf", Some("pdf"), 100, "/tmp/invoice_01.pdf", "Downloads");
+        let entry = make_entry(
+            "invoice_01.pdf",
+            Some("pdf"),
+            100,
+            "/tmp/invoice_01.pdf",
+            "Downloads",
+        );
         assert_eq!(engine.evaluate(&entry).unwrap().name, "PDF invoices");
 
         // Extension matches but filename doesn't
-        let entry2 = make_entry("report.pdf", Some("pdf"), 100, "/tmp/report.pdf", "Downloads");
+        let entry2 = make_entry(
+            "report.pdf",
+            Some("pdf"),
+            100,
+            "/tmp/report.pdf",
+            "Downloads",
+        );
         assert!(engine.evaluate(&entry2).is_none());
 
         // Filename matches but extension doesn't
-        let entry3 = make_entry("invoice.txt", Some("txt"), 100, "/tmp/invoice.txt", "Downloads");
+        let entry3 = make_entry(
+            "invoice.txt",
+            Some("txt"),
+            100,
+            "/tmp/invoice.txt",
+            "Downloads",
+        );
         assert!(engine.evaluate(&entry3).is_none());
     }
 

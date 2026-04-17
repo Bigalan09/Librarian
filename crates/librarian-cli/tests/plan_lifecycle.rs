@@ -2,12 +2,12 @@
 
 use std::path::PathBuf;
 
-use librarian_core::decision::{read_decisions, ClassificationMethod};
-use librarian_core::file_entry::FileEntry;
-use librarian_core::plan::{ActionType, Plan, PlannedAction, PlanStats, PlanStatus};
-use librarian_core::walker;
 use librarian_core::IgnoreEngine;
-use librarian_rules::{load_rules, RuleEngine};
+use librarian_core::decision::{ClassificationMethod, read_decisions};
+use librarian_core::file_entry::FileEntry;
+use librarian_core::plan::{ActionType, Plan, PlanStats, PlanStatus, PlannedAction};
+use librarian_core::walker;
+use librarian_rules::{RuleEngine, load_rules};
 use tempfile::tempdir;
 
 /// Build a temp directory with sample files and return (source_dir, dest_dir, temp_handle).
@@ -96,8 +96,12 @@ async fn full_apply_and_rollback_cycle() {
     let mut plan = Plan::new("lifecycle-test", vec![source.clone()], dest.clone());
     for entry in &entries {
         let dest_path = dest.join("sorted").join(&entry.name);
-        plan.actions
-            .push(make_action(entry.path.clone(), dest_path, ActionType::Move, ClassificationMethod::Rule));
+        plan.actions.push(make_action(
+            entry.path.clone(),
+            dest_path,
+            ActionType::Move,
+            ClassificationMethod::Rule,
+        ));
     }
 
     // Apply
@@ -138,8 +142,12 @@ async fn apply_with_backup_and_rollback() {
     let mut plan = Plan::new("backup-test", vec![source.clone()], dest.clone());
     for entry in &entries {
         let dest_path = dest.join("sorted").join(&entry.name);
-        plan.actions
-            .push(make_action(entry.path.clone(), dest_path, ActionType::Move, ClassificationMethod::Rule));
+        plan.actions.push(make_action(
+            entry.path.clone(),
+            dest_path,
+            ActionType::Move,
+            ClassificationMethod::Rule,
+        ));
     }
 
     // Backup first
@@ -215,8 +223,8 @@ async fn collision_detection_skips_existing() {
 
 #[test]
 fn rules_engine_matches_fixtures() {
-    let rules_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/sample_rules.yaml");
+    let rules_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/sample_rules.yaml");
 
     let ruleset = load_rules(&rules_path).unwrap();
     let engine = RuleEngine::new(ruleset);

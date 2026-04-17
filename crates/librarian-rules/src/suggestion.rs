@@ -80,7 +80,11 @@ pub fn suggest_rules(
     }
 
     // Sort by pattern count descending for deterministic output
-    suggestions.sort_by(|a, b| b.pattern_count.cmp(&a.pattern_count).then(a.name.cmp(&b.name)));
+    suggestions.sort_by(|a, b| {
+        b.pattern_count
+            .cmp(&a.pattern_count)
+            .then(a.name.cmp(&b.name))
+    });
 
     suggestions
 }
@@ -114,7 +118,12 @@ fn generate_rule_name(source_inbox: &str, filetype: Option<&str>, dest_folder: &
         .unwrap_or_else(|| dest_folder.to_string());
 
     match filetype {
-        Some(ft) => format!("Auto: {} from {} to {}", ft.to_uppercase(), source_inbox, folder_name),
+        Some(ft) => format!(
+            "Auto: {} from {} to {}",
+            ft.to_uppercase(),
+            source_inbox,
+            folder_name
+        ),
         None => format!("Auto: {} to {}", source_inbox, folder_name),
     }
 }

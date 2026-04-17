@@ -59,7 +59,9 @@ mod tests {
     async fn extract_markdown() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("readme.md");
-        tokio::fs::write(&file, "# Title\n\nSome content").await.unwrap();
+        tokio::fs::write(&file, "# Title\n\nSome content")
+            .await
+            .unwrap();
 
         let content = extract_content(&file).await;
         assert_eq!(content.unwrap(), "# Title\n\nSome content");
@@ -79,7 +81,9 @@ mod tests {
     async fn binary_file_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("image.png");
-        tokio::fs::write(&file, &[0x89, 0x50, 0x4E, 0x47]).await.unwrap();
+        tokio::fs::write(&file, &[0x89, 0x50, 0x4E, 0x47])
+            .await
+            .unwrap();
 
         let content = extract_content(&file).await;
         assert!(content.is_none());

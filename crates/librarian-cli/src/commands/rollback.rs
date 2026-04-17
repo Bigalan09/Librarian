@@ -5,7 +5,9 @@ use librarian_core::plan::{Plan, PlanStatus};
 
 pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
     let plans_dir = config::librarian_home().join("plans");
-    let decision_log = config::librarian_home().join("history").join("decisions.jsonl");
+    let decision_log = config::librarian_home()
+        .join("history")
+        .join("decisions.jsonl");
 
     let plan_path = if let Some(name) = &plan_name {
         plans_dir.join(format!("{name}.json"))

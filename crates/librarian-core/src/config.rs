@@ -187,12 +187,26 @@ pub fn validate(config: &AppConfig) -> Result<Vec<String>, Vec<String>> {
     // Thresholds must be in [0.0, 1.0]
     let check_threshold = |name: &str, val: f64, errors: &mut Vec<String>| {
         if !(0.0..=1.0).contains(&val) {
-            errors.push(format!("{name} threshold must be between 0.0 and 1.0, got {val}"));
+            errors.push(format!(
+                "{name} threshold must be between 0.0 and 1.0, got {val}"
+            ));
         }
     };
-    check_threshold("filename_embedding", config.thresholds.filename_embedding, &mut errors);
-    check_threshold("content_embedding", config.thresholds.content_embedding, &mut errors);
-    check_threshold("llm_confidence", config.thresholds.llm_confidence, &mut errors);
+    check_threshold(
+        "filename_embedding",
+        config.thresholds.filename_embedding,
+        &mut errors,
+    );
+    check_threshold(
+        "content_embedding",
+        config.thresholds.content_embedding,
+        &mut errors,
+    );
+    check_threshold(
+        "llm_confidence",
+        config.thresholds.llm_confidence,
+        &mut errors,
+    );
 
     if config.max_moves_per_run == 0 {
         errors.push("max_moves_per_run must be greater than 0".to_string());
@@ -230,7 +244,11 @@ pub fn load(path: &std::path::Path) -> anyhow::Result<AppConfig> {
     let mut config: AppConfig = serde_yaml::from_str(&contents)?;
 
     // Expand tildes in all path fields
-    config.inbox_folders = config.inbox_folders.iter().map(|p| expand_tilde(p)).collect();
+    config.inbox_folders = config
+        .inbox_folders
+        .iter()
+        .map(|p| expand_tilde(p))
+        .collect();
     config.destination_root = expand_tilde(&config.destination_root);
     config.needs_review_path = expand_tilde(&config.needs_review_path);
     config.trash_path = expand_tilde(&config.trash_path);

@@ -35,12 +35,10 @@ mod platform {
 
     /// Decode a binary-plist xattr value into a list of strings.
     fn decode_plist_tags(data: &[u8]) -> Result<Vec<String>> {
-        let value: plist::Value = plist::from_bytes(data)
-            .context("failed to decode binary plist for tags")?;
+        let value: plist::Value =
+            plist::from_bytes(data).context("failed to decode binary plist for tags")?;
 
-        let array = value
-            .as_array()
-            .context("tags plist is not an array")?;
+        let array = value.as_array().context("tags plist is not an array")?;
 
         let tags = array
             .iter()
@@ -93,7 +91,7 @@ mod platform {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
                     return Err(e)
-                        .with_context(|| format!("xattr remove tags on {}", path.display()))
+                        .with_context(|| format!("xattr remove tags on {}", path.display()));
                 }
             }
         } else {
@@ -156,8 +154,8 @@ mod platform {
             .with_context(|| format!("xattr get original name on {}", path.display()))?
         {
             Some(data) => {
-                let name = String::from_utf8(data)
-                    .context("original name xattr is not valid UTF-8")?;
+                let name =
+                    String::from_utf8(data).context("original name xattr is not valid UTF-8")?;
                 Ok(Some(name))
             }
             None => Ok(None),
@@ -169,8 +167,7 @@ mod platform {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(e)
-                    .with_context(|| format!("xattr remove tags on {}", path.display()))
+                return Err(e).with_context(|| format!("xattr remove tags on {}", path.display()));
             }
         }
         Ok(())
@@ -210,8 +207,7 @@ mod platform {
 
     fn write_sidecar(path: &Path, meta: &SidecarMeta) -> Result<()> {
         let sidecar = sidecar_path(path);
-        let content = serde_json::to_string_pretty(meta)
-            .context("serialising sidecar metadata")?;
+        let content = serde_json::to_string_pretty(meta).context("serialising sidecar metadata")?;
         std::fs::write(&sidecar, content)
             .with_context(|| format!("writing sidecar {}", sidecar.display()))?;
         Ok(())

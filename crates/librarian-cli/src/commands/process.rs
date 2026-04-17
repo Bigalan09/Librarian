@@ -2,12 +2,12 @@
 
 use std::path::PathBuf;
 
+use librarian_core::IgnoreEngine;
 use librarian_core::config::{self, ProviderType};
 use librarian_core::decision::ClassificationMethod;
 use librarian_core::file_entry::FinderColour;
-use librarian_core::plan::{ActionType, Plan, PlannedAction, PlanStats};
+use librarian_core::plan::{ActionType, Plan, PlanStats, PlannedAction};
 use librarian_core::walker;
-use librarian_core::IgnoreEngine;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
@@ -35,7 +35,10 @@ pub async fn run(
             for e in &errors {
                 tracing::error!("{e}");
             }
-            anyhow::bail!("Configuration has {} error(s). Fix config.yaml and retry.", errors.len());
+            anyhow::bail!(
+                "Configuration has {} error(s). Fix config.yaml and retry.",
+                errors.len()
+            );
         }
     }
 
@@ -89,9 +92,11 @@ pub async fn run(
     };
 
     // Load embedding cache
-    let cache_path = config::librarian_home().join("cache").join("embeddings.msgpack");
-    let embed_cache = librarian_providers::cache::EmbeddingCache::load(&cache_path)
-        .unwrap_or_default();
+    let cache_path = config::librarian_home()
+        .join("cache")
+        .join("embeddings.msgpack");
+    let embed_cache =
+        librarian_providers::cache::EmbeddingCache::load(&cache_path).unwrap_or_default();
 
     // Scan each source folder
     let mut all_entries = Vec::new();
@@ -181,11 +186,8 @@ pub async fn run(
             let provider = router.active()?;
 
             // Step 2: Filename embedding
-            let _filename_result = librarian_classifier::embedding::embed_text_dyn(
-                provider,
-                &entry.name,
-            )
-            .await;
+            let _filename_result =
+                librarian_classifier::embedding::embed_text_dyn(provider, &entry.name).await;
 
             // TODO: compare against bucket centroids from Qdrant
             // For now, fall through to LLM classifier
@@ -201,14 +203,11 @@ pub async fn run(
 
             match llm_result {
                 Ok(result) => {
-                    let gate_result = gate.check_llm_confidence(
-                        result.confidence,
-                        &result.destination,
-                    );
+                    let gate_result =
+                        gate.check_llm_confidence(result.confidence, &result.destination);
                     match gate_result {
                         librarian_classifier::GateResult::Accept { destination, .. } => {
-                            let destination_path =
-                                dest_root.join(&destination).join(&entry.name);
+                            let destination_path = dest_root.join(&destination).join(&entry.name);
                             plan.actions.push(PlannedAction {
                                 file_hash: entry.hash.clone(),
                                 source_path: entry.path.clone(),
@@ -225,8 +224,7 @@ pub async fn run(
                             stats.ai_classified += 1;
                         }
                         librarian_classifier::GateResult::NeedsReview { reason } => {
-                            let destination_path =
-                                cfg.needs_review_path.join(&entry.name);
+                            let destination_path = cfg.needs_review_path.join(&entry.name);
                             plan.actions.push(PlannedAction {
                                 file_hash: entry.hash.clone(),
                                 source_path: entry.path.clone(),
@@ -310,7 +308,10 @@ pub async fn run(
     println!("-------");
     println!("Matched rules        {:>5}", plan.stats.rule_matched);
     println!("AI classified        {:>5}", plan.stats.ai_classified);
-    println!("Low confidence       {:>5}  -> NeedsReview", plan.stats.needs_review);
+    println!(
+        "Low confidence       {:>5}  -> NeedsReview",
+        plan.stats.needs_review
+    );
     println!("Skipped (no match)   {:>5}", plan.stats.skipped);
     println!("Total files          {:>5}", plan.stats.total_files);
     println!();

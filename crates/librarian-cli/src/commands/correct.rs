@@ -5,13 +5,9 @@ use std::path::PathBuf;
 use chrono::Utc;
 use librarian_core::config;
 use librarian_core::decision::read_decisions;
-use librarian_learning::corrections::{record_correction, Correction, CorrectionSource};
+use librarian_learning::corrections::{Correction, CorrectionSource, record_correction};
 
-pub async fn run(
-    file: PathBuf,
-    to: Option<PathBuf>,
-    retag: Option<String>,
-) -> anyhow::Result<()> {
+pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> anyhow::Result<()> {
     let cfg = config::load_default()?;
     let home = config::librarian_home();
     let decisions_path = home.join("history/decisions.jsonl");
@@ -35,10 +31,7 @@ pub async fn run(
     let file_hash = hash_file(&file)?;
     let decisions = read_decisions(&decisions_path)?;
 
-    let original_decision = decisions
-        .iter()
-        .rev()
-        .find(|d| d.file_hash == file_hash);
+    let original_decision = decisions.iter().rev().find(|d| d.file_hash == file_hash);
 
     let original_path = match original_decision {
         Some(d) => d.file_path.clone(),
@@ -84,9 +77,7 @@ pub async fn run(
             .collect::<Vec<_>>()
     });
 
-    let filetype = file
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase());
+    let filetype = file.extension().map(|e| e.to_string_lossy().to_lowercase());
 
     // Detect source inbox from original path
     let source_inbox = detect_source_inbox(&original_path, &cfg);
@@ -105,18 +96,13 @@ pub async fn run(
     record_correction(&corrections_path, &decisions_path, &correction)?;
 
     // If --to was specified, actually move the file
-    if to.is_some()
-        && file != corrected_path {
-            if let Some(parent) = corrected_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::rename(&file, &corrected_path)?;
-            println!(
-                "Moved {} -> {}",
-                file.display(),
-                corrected_path.display()
-            );
+    if to.is_some() && file != corrected_path {
+        if let Some(parent) = corrected_path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
+        std::fs::rename(&file, &corrected_path)?;
+        println!("Moved {} -> {}", file.display(), corrected_path.display());
+    }
 
     println!("Correction recorded for {}", file_hash);
 
@@ -145,9 +131,9 @@ fn detect_source_inbox(path: &std::path::Path, cfg: &config::AppConfig) -> Strin
                 || path
                     .to_string_lossy()
                     .contains(name.to_string_lossy().as_ref()))
-            {
-                return name.to_string_lossy().to_string();
-            }
+        {
+            return name.to_string_lossy().to_string();
+        }
     }
     // Fallback
     path.parent()

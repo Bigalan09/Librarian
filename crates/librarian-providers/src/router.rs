@@ -98,22 +98,31 @@ impl ProviderRouter {
 /// boxed futures so we can use `&dyn ErasedProvider`.
 #[allow(clippy::type_complexity)]
 pub trait ErasedProvider: Send + Sync {
-    fn validate(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ModelInfo>> + Send + '_>>;
+    fn validate(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ModelInfo>> + Send + '_>>;
     fn chat(
         &self,
         messages: Vec<ChatMessage>,
         temperature: f64,
         max_tokens: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ChatResponse>> + Send + '_>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = anyhow::Result<ChatResponse>> + Send + '_>,
+    >;
     fn embed(
         &self,
         texts: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send + '_>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send + '_>,
+    >;
     fn name(&self) -> &str;
 }
 
 impl<T: Provider> ErasedProvider for T {
-    fn validate(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ModelInfo>> + Send + '_>> {
+    fn validate(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ModelInfo>> + Send + '_>>
+    {
         Box::pin(Provider::validate(self))
     }
 
@@ -122,14 +131,18 @@ impl<T: Provider> ErasedProvider for T {
         messages: Vec<ChatMessage>,
         temperature: f64,
         max_tokens: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ChatResponse>> + Send + '_>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = anyhow::Result<ChatResponse>> + Send + '_>,
+    > {
         Box::pin(Provider::chat(self, messages, temperature, max_tokens))
     }
 
     fn embed(
         &self,
         texts: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send + '_>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send + '_>,
+    > {
         Box::pin(Provider::embed(self, texts))
     }
 

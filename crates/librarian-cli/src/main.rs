@@ -5,7 +5,11 @@ mod commands;
 mod output;
 
 #[derive(Parser)]
-#[command(name = "librarian", version, about = "Organise files using rules and AI")]
+#[command(
+    name = "librarian",
+    version,
+    about = "Organise files using rules and AI"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -244,9 +248,7 @@ async fn main() -> anyhow::Result<()> {
             RulesAction::Validate { rules } => commands::rules::validate(rules).await,
             RulesAction::Suggest => commands::rules::suggest().await,
         },
-        Commands::Correct { file, to, retag } => {
-            commands::correct::run(file, to, retag).await
-        }
+        Commands::Correct { file, to, retag } => commands::correct::run(file, to, retag).await,
         Commands::Watch => commands::watch::run().await,
         Commands::Review => commands::review::run().await,
         Commands::Config { action } => match action {

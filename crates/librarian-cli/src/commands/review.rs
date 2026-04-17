@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use librarian_core::config;
-use librarian_learning::corrections::{record_correction, Correction, CorrectionSource};
+use librarian_learning::corrections::{Correction, CorrectionSource, record_correction};
 
 pub async fn run() -> anyhow::Result<()> {
     let cfg = config::load_default()?;
@@ -15,7 +15,10 @@ pub async fn run() -> anyhow::Result<()> {
     let needs_review = &cfg.needs_review_path;
 
     if !needs_review.exists() {
-        println!("NeedsReview folder does not exist: {}", needs_review.display());
+        println!(
+            "NeedsReview folder does not exist: {}",
+            needs_review.display()
+        );
         return Ok(());
     }
 
@@ -58,9 +61,10 @@ pub async fn run() -> anyhow::Result<()> {
                 .unwrap_or_default()
         ));
         if reason_path.exists()
-            && let Ok(reason) = std::fs::read_to_string(&reason_path) {
-                println!("Reason: {}", reason.trim());
-            }
+            && let Ok(reason) = std::fs::read_to_string(&reason_path)
+        {
+            println!("Reason: {}", reason.trim());
+        }
 
         // Suggest the destination root as a starting point
         let suggested = cfg.destination_root.join(&filename);
@@ -81,9 +85,7 @@ pub async fn run() -> anyhow::Result<()> {
                 }
 
                 let file_hash = hash_file(&path)?;
-                let filetype = path
-                    .extension()
-                    .map(|e| e.to_string_lossy().to_lowercase());
+                let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
                     original_path: path.clone(),
@@ -136,9 +138,7 @@ pub async fn run() -> anyhow::Result<()> {
                 }
 
                 let file_hash = hash_file(&path)?;
-                let filetype = path
-                    .extension()
-                    .map(|e| e.to_string_lossy().to_lowercase());
+                let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
                     original_path: path.clone(),

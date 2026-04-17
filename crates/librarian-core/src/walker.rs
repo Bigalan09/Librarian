@@ -51,11 +51,10 @@ pub async fn scan_directory(
                 }
             };
 
-            if file_type.is_symlink()
-                && IgnoreEngine::is_external_symlink(&path, source_dir) {
-                    tracing::debug!("ignored external symlink: {}", path.display());
-                    continue;
-                }
+            if file_type.is_symlink() && IgnoreEngine::is_external_symlink(&path, source_dir) {
+                tracing::debug!("ignored external symlink: {}", path.display());
+                continue;
+            }
 
             if file_type.is_dir() {
                 stack.push(path);
@@ -166,7 +165,12 @@ mod tests {
             .unwrap();
 
         // Must return exactly 5 — no more, no fewer.
-        assert_eq!(entries.len(), 5, "expected exactly 5 entries with max_files=5, got {}", entries.len());
+        assert_eq!(
+            entries.len(),
+            5,
+            "expected exactly 5 entries with max_files=5, got {}",
+            entries.len()
+        );
     }
 
     #[tokio::test]
@@ -196,9 +200,11 @@ mod tests {
 
         assert!(entries.iter().all(|e| !e.hash.is_empty()));
         // Verify hash is valid hex
-        assert!(entries
-            .iter()
-            .all(|e| e.hash.chars().all(|c| c.is_ascii_hexdigit())));
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.hash.chars().all(|c| c.is_ascii_hexdigit()))
+        );
     }
 
     #[tokio::test]

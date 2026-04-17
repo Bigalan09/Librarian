@@ -10,7 +10,7 @@ pub mod walker;
 // Re-export commonly used types.
 pub use config::{AppConfig, ProviderConfig, ProviderType, Thresholds};
 pub use decision::{
-    append_decision, read_decisions, ClassificationMethod, Decision, DecisionOutcome, DecisionType,
+    ClassificationMethod, Decision, DecisionOutcome, DecisionType, append_decision, read_decisions,
 };
 pub use file_entry::{FileEntry, FinderColour};
 pub use ignore::IgnoreEngine;

@@ -26,10 +26,7 @@ pub async fn run() -> anyhow::Result<()> {
             }
             for action in &plan.actions {
                 if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(
-                        action.file_hash.clone(),
-                        action.destination_path.clone(),
-                    );
+                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
                 }
             }
         }

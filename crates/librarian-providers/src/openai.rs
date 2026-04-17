@@ -149,7 +149,10 @@ impl OpenAi {
                     .and_then(|v| v.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(1);
-                warn!(retry_after_secs = retry_after, attempt, "Rate limited (429), retrying");
+                warn!(
+                    retry_after_secs = retry_after,
+                    attempt, "Rate limited (429), retrying"
+                );
                 std::time::Duration::from_secs(retry_after)
             } else {
                 let secs = 1u64 << (attempt - 1); // 1s, 2s
@@ -233,10 +236,7 @@ impl Provider for OpenAi {
         debug!("Validating OpenAI connection");
 
         let url = format!("{}/models", self.base_url);
-        let req = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.api_key);
+        let req = self.client.get(&url).bearer_auth(&self.api_key);
 
         let resp = self.request_with_retry(req).await?;
         let status = resp.status();
@@ -300,7 +300,10 @@ impl Provider for OpenAi {
             .next()
             .ok_or_else(|| anyhow::anyhow!("No choices in OpenAI response"))?;
 
-        debug!(elapsed_ms = start.elapsed().as_millis() as u64, "OpenAI chat complete");
+        debug!(
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "OpenAI chat complete"
+        );
         Ok(ChatResponse {
             content: choice.message.content,
             model: completion.model,
@@ -335,8 +338,15 @@ impl Provider for OpenAi {
         }
 
         let embedding_resp: EmbeddingResponse = resp.json().await?;
-        debug!(elapsed_ms = start.elapsed().as_millis() as u64, "OpenAI embed complete");
-        Ok(embedding_resp.data.into_iter().map(|d| d.embedding).collect())
+        debug!(
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "OpenAI embed complete"
+        );
+        Ok(embedding_resp
+            .data
+            .into_iter()
+            .map(|d| d.embedding)
+            .collect())
     }
 
     fn name(&self) -> &str {
@@ -408,10 +418,7 @@ mod tests {
             60,
         );
 
-        let embeddings = provider
-            .embed(vec!["test".to_string()])
-            .await
-            .unwrap();
+        let embeddings = provider.embed(vec!["test".to_string()]).await.unwrap();
         assert_eq!(embeddings.len(), 1);
         assert_eq!(embeddings[0], vec![0.1, 0.2]);
         mock.assert_async().await;

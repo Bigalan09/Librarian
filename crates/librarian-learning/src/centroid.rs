@@ -50,12 +50,7 @@ impl CentroidStore {
     /// Formula: `centroid = (1 - learning_rate) * old + learning_rate * new`
     ///
     /// If the key does not exist yet, the new embedding is stored directly.
-    pub fn update_centroid(
-        &mut self,
-        key: CentroidKey,
-        new_embedding: &[f32],
-        learning_rate: f32,
-    ) {
+    pub fn update_centroid(&mut self, key: CentroidKey, new_embedding: &[f32], learning_rate: f32) {
         if let Some(existing) = self.centroids.get_mut(&key) {
             // Ensure dimensions match; if they don't, replace entirely
             if existing.len() == new_embedding.len() {

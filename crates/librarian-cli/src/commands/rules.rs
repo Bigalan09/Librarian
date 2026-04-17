@@ -39,7 +39,9 @@ pub async fn suggest() -> anyhow::Result<()> {
     let corrections = librarian_rules::read_correction_records(&corrections_path)?;
 
     if corrections.is_empty() {
-        println!("No corrections recorded yet. Use `librarian correct` or `librarian review` first.");
+        println!(
+            "No corrections recorded yet. Use `librarian correct` or `librarian review` first."
+        );
         return Ok(());
     }
 
@@ -67,10 +69,7 @@ pub async fn suggest() -> anyhow::Result<()> {
 
     for suggestion in &suggestions {
         println!("{}", suggestion.yaml);
-        println!(
-            "  # Based on {} correction(s)\n",
-            suggestion.pattern_count
-        );
+        println!("  # Based on {} correction(s)\n", suggestion.pattern_count);
     }
 
     Ok(())

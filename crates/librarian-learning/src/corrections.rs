@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use librarian_core::decision::{append_decision, Decision, DecisionOutcome, DecisionType};
+use librarian_core::decision::{Decision, DecisionOutcome, DecisionType, append_decision};
 
 /// How the correction was detected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,11 +107,7 @@ pub fn record_reorganisation(
     from: &Path,
     to: &Path,
 ) -> anyhow::Result<()> {
-    let action = format!(
-        "reorganised from {} to {}",
-        from.display(),
-        to.display()
-    );
+    let action = format!("reorganised from {} to {}", from.display(), to.display());
     let decision = Decision::new(
         DecisionType::Reorganisation,
         file_hash,
