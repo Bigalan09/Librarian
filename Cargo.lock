@@ -1388,6 +1388,7 @@ dependencies = [
 name = "librarian-rules"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "globset",
  "librarian-core",
  "regex",

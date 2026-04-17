@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 librarian-core.workspace = true
+chrono.workspace = true
 globset.workspace = true
 regex.workspace = true
 serde.workspace = true
