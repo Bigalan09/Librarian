@@ -181,6 +181,7 @@ mod platform {
 #[cfg(not(target_os = "macos"))]
 mod platform {
     use super::*;
+    use anyhow::Context;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Default, Serialize, Deserialize)]

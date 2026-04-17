@@ -153,8 +153,12 @@ impl Plan {
 
     /// Create a new Draft plan with no actions.
     pub fn new(name: &str, source_folders: Vec<PathBuf>, destination_root: PathBuf) -> Self {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+
         let now = Utc::now();
-        let id = format!("{}", now.format("%Y%m%d-%H%M%S-%3f"));
+        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = format!("{}-{:04}", now.format("%Y%m%d-%H%M%S-%3f"), seq);
         Self {
             id,
             name: name.to_owned(),

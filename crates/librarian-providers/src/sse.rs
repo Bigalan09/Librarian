@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn event_boundary_detection() {
-        let lines = vec![
+        let lines = [
             r#"data: {"choices":[{"delta":{"content":"Hello"}}]}"#,
             "",
             r#"data: {"choices":[{"delta":{"content":" world"}}]}"#,

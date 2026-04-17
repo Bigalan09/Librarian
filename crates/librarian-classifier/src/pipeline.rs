@@ -358,35 +358,27 @@ mod tests {
     }
 
     impl Provider for MockProvider {
-        fn validate(&self) -> impl std::future::Future<Output = anyhow::Result<ModelInfo>> + Send {
-            async {
-                Ok(ModelInfo {
-                    id: "mock-model".to_string(),
-                })
-            }
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: "mock-model".to_string(),
+            })
         }
 
-        fn chat(
+        async fn chat(
             &self,
             _messages: Vec<ChatMessage>,
             _temperature: f64,
             _max_tokens: u32,
-        ) -> impl std::future::Future<Output = anyhow::Result<ChatResponse>> + Send {
-            let content = self.chat_response.clone();
-            async move {
-                Ok(ChatResponse {
-                    content,
-                    model: "mock-model".to_string(),
-                })
-            }
+        ) -> anyhow::Result<ChatResponse> {
+            Ok(ChatResponse {
+                content: self.chat_response.clone(),
+                model: "mock-model".to_string(),
+            })
         }
 
-        fn embed(
-            &self,
-            texts: Vec<String>,
-        ) -> impl std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send {
+        async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
             let emb = self.embedding.clone();
-            async move { Ok(texts.iter().map(|_| emb.clone()).collect()) }
+            Ok(texts.iter().map(|_| emb.clone()).collect())
         }
 
         fn name(&self) -> &str {
