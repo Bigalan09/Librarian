@@ -56,24 +56,24 @@
 
 ### Tests for Foundational
 
-- [ ] T013 [P] {sonnet} Write unit tests for config loading in `crates/librarian-core/src/config.rs` — test default values, YAML parsing, missing fields, invalid paths
-- [ ] T014 [P] {sonnet} Write unit tests for blake3 hashing in `crates/librarian-core/src/hasher.rs` — test known digests, empty file, large file
-- [ ] T015 [P] {sonnet} Write unit tests for ignore engine in `crates/librarian-core/src/ignore.rs` — test system defaults, `.librarianignore`, global ignore, symlink detection
-- [ ] T016 [P] {sonnet} Write unit tests for directory walker in `crates/librarian-core/src/walker.rs` — test file enumeration, ignore integration, symlink handling, open file detection
-- [ ] T017 [P] {sonnet} Write unit tests for FileEntry in `crates/librarian-core/src/file_entry.rs` — test construction, hash population, metadata reading
-- [ ] T018 [P] {sonnet} Write unit tests for decision log in `crates/librarian-core/src/decision.rs` — test JSONL append, read-back, field completeness
-- [ ] T019 [P] {sonnet} Write unit tests for Finder tags in `crates/librarian-core/src/tags.rs` — test xattr read/write on macOS, sidecar fallback on other platforms, colour index mapping
+- [x] T013 [P] {sonnet} Write unit tests for config loading in `crates/librarian-core/src/config.rs` — test default values, YAML parsing, missing fields, invalid paths
+- [x] T014 [P] {sonnet} Write unit tests for blake3 hashing in `crates/librarian-core/src/hasher.rs` — test known digests, empty file, large file
+- [x] T015 [P] {sonnet} Write unit tests for ignore engine in `crates/librarian-core/src/ignore.rs` — test system defaults, `.librarianignore`, global ignore, symlink detection
+- [x] T016 [P] {sonnet} Write unit tests for directory walker in `crates/librarian-core/src/walker.rs` — test file enumeration, ignore integration, symlink handling, open file detection
+- [x] T017 [P] {sonnet} Write unit tests for FileEntry in `crates/librarian-core/src/file_entry.rs` — test construction, hash population, metadata reading
+- [x] T018 [P] {sonnet} Write unit tests for decision log in `crates/librarian-core/src/decision.rs` — test JSONL append, read-back, field completeness
+- [x] T019 [P] {sonnet} Write unit tests for Finder tags in `crates/librarian-core/src/tags.rs` — test xattr read/write on macOS, sidecar fallback on other platforms, colour index mapping
 
 ### Implementation for Foundational
 
-- [ ] T020 [P] {sonnet} Implement AppConfig loading in `crates/librarian-core/src/config.rs` — parse `config.yaml`, merge defaults, validate paths, expose Thresholds and ProviderConfig per data model
-- [ ] T021 [P] {haiku} Implement FileEntry struct in `crates/librarian-core/src/file_entry.rs` — fields per data model (path, name, extension, size, hash, timestamps, tags, colour, source_inbox)
-- [ ] T022 [P] {sonnet} Implement blake3 hasher in `crates/librarian-core/src/hasher.rs` — async file hashing with streaming reads, hex digest output
-- [ ] T023 [P] {opus} Implement ignore engine in `crates/librarian-core/src/ignore.rs` — three-tier ignore (system defaults, per-folder `.librarianignore`, global `~/.librarian/ignore`), gitignore syntax via `ignore` crate, symlink-outside-source detection, open-file detection via `lsof`
-- [ ] T024 {opus} Implement directory walker in `crates/librarian-core/src/walker.rs` — async recursive scan with ignore integration, FileEntry construction, parallel hashing, respecting max-moves-per-run limit
-- [ ] T025 [P] {sonnet} Implement decision log in `crates/librarian-core/src/decision.rs` — Decision struct per data model, JSONL append with file locking, DecisionType and DecisionOutcome enums
-- [ ] T026 [P] {opus} Implement Finder tags in `crates/librarian-core/src/tags.rs` — xattr read/write via `xattr` crate for `com.apple.metadata:_kMDItemUserTags` (binary plist via `plist` crate), FinderColour via `com.apple.FinderInfo` byte 9, `#[cfg(target_os = "macos")]` gate, `.librarian-meta.json` sidecar fallback
-- [ ] T027 [P] {haiku} Implement lib.rs for librarian-core in `crates/librarian-core/src/lib.rs` — re-export all public types
+- [x] T020 [P] {sonnet} Implement AppConfig loading in `crates/librarian-core/src/config.rs` — parse `config.yaml`, merge defaults, validate paths, expose Thresholds and ProviderConfig per data model
+- [x] T021 [P] {haiku} Implement FileEntry struct in `crates/librarian-core/src/file_entry.rs` — fields per data model (path, name, extension, size, hash, timestamps, tags, colour, source_inbox)
+- [x] T022 [P] {sonnet} Implement blake3 hasher in `crates/librarian-core/src/hasher.rs` — async file hashing with streaming reads, hex digest output
+- [x] T023 [P] {opus} Implement ignore engine in `crates/librarian-core/src/ignore.rs` — three-tier ignore (system defaults, per-folder `.librarianignore`, global `~/.librarian/ignore`), gitignore syntax via `ignore` crate, symlink-outside-source detection, open-file detection via `lsof`
+- [x] T024 {opus} Implement directory walker in `crates/librarian-core/src/walker.rs` — async recursive scan with ignore integration, FileEntry construction, parallel hashing, respecting max-moves-per-run limit
+- [x] T025 [P] {sonnet} Implement decision log in `crates/librarian-core/src/decision.rs` — Decision struct per data model, JSONL append with file locking, DecisionType and DecisionOutcome enums
+- [x] T026 [P] {opus} Implement Finder tags in `crates/librarian-core/src/tags.rs` — xattr read/write via `xattr` crate for `com.apple.metadata:_kMDItemUserTags` (binary plist via `plist` crate), FinderColour via `com.apple.FinderInfo` byte 9, `#[cfg(target_os = "macos")]` gate, `.librarian-meta.json` sidecar fallback
+- [x] T027 [P] {haiku} Implement lib.rs for librarian-core in `crates/librarian-core/src/lib.rs` — re-export all public types
 
 **Checkpoint**: Foundation ready — `cargo test -p librarian-core` passes, all core types available for user stories
 

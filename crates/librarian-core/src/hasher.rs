@@ -1,1 +1,70 @@
-//! blake3 file hashing
+//! blake3 file hashing.
+
+use std::path::Path;
+
+use tokio::io::AsyncReadExt;
+
+/// Hash a file using blake3, returning the hex digest.
+pub async fn hash_file(path: &Path) -> std::io::Result<String> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = vec![0u8; 64 * 1024]; // 64 KiB buffer
+
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn hash_known_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known.txt");
+        std::fs::write(&path, b"hello world").unwrap();
+
+        let digest = hash_file(&path).await.unwrap();
+
+        // blake3 of "hello world"
+        let expected = blake3::hash(b"hello world").to_hex().to_string();
+        assert_eq!(digest, expected);
+    }
+
+    #[tokio::test]
+    async fn hash_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.txt");
+        std::fs::write(&path, b"").unwrap();
+
+        let digest = hash_file(&path).await.unwrap();
+        let expected = blake3::hash(b"").to_hex().to_string();
+        assert_eq!(digest, expected);
+    }
+
+    #[tokio::test]
+    async fn hash_large_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.bin");
+        // 256 KiB of zeros — exercises multi-buffer reads
+        let data = vec![0u8; 256 * 1024];
+        std::fs::write(&path, &data).unwrap();
+
+        let digest = hash_file(&path).await.unwrap();
+        let expected = blake3::hash(&data).to_hex().to_string();
+        assert_eq!(digest, expected);
+    }
+
+    #[tokio::test]
+    async fn hash_nonexistent_file_errors() {
+        let result = hash_file(Path::new("/nonexistent/file.txt")).await;
+        assert!(result.is_err());
+    }
+}
