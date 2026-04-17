@@ -1,6 +1,6 @@
 //! Configuration loading and management.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -167,10 +167,27 @@ pub fn librarian_home() -> PathBuf {
     dirs_home().join(".librarian")
 }
 
+/// Expand a leading `~` to the user's home directory.
+pub fn expand_tilde(path: &Path) -> PathBuf {
+    if let Ok(stripped) = path.strip_prefix("~") {
+        dirs_home().join(stripped)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 /// Load configuration from a YAML file, merging with defaults.
+/// Expands `~` in all path fields to the user's home directory.
 pub fn load(path: &std::path::Path) -> anyhow::Result<AppConfig> {
     let contents = std::fs::read_to_string(path)?;
-    let config: AppConfig = serde_yaml::from_str(&contents)?;
+    let mut config: AppConfig = serde_yaml::from_str(&contents)?;
+
+    // Expand tildes in all path fields
+    config.inbox_folders = config.inbox_folders.iter().map(|p| expand_tilde(p)).collect();
+    config.destination_root = expand_tilde(&config.destination_root);
+    config.needs_review_path = expand_tilde(&config.needs_review_path);
+    config.trash_path = expand_tilde(&config.trash_path);
+
     Ok(config)
 }
 
