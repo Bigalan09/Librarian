@@ -62,7 +62,7 @@ fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path:
         .filter(|p| p.status == PlanStatus::Applied)
         .collect();
 
-    plans.sort_by(|a, b| b.applied_at.cmp(&a.applied_at));
+    plans.sort_by_key(|p| std::cmp::Reverse(p.applied_at));
 
     plans
         .first()

@@ -28,7 +28,7 @@ pub fn select_examples(
         .collect();
 
     // Sort by timestamp descending, take last N (most recent)
-    filtered.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    filtered.sort_by_key(|c| c.timestamp);
 
     let selected: Vec<&Correction> = if filtered.len() > max_count {
         filtered[filtered.len() - max_count..].to_vec()
