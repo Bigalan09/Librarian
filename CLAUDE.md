@@ -40,11 +40,11 @@ librarian-cli  (orchestration, clap commands)
 
 Each tier either accepts (meets confidence threshold) or escalates to the next:
 
-1. **Rule Engine** (confidence=1.0) — glob/regex pattern matching from rules.yaml
-2. **Filename Embedding** — cosine similarity vs bucket centroids (threshold: 0.80)
-3. **Content Embedding** — for text/PDF files, 8000 char truncation (threshold: 0.75)
-4. **LLM Classifier** — structured JSON response with few-shot examples (threshold: 0.70)
-5. **NeedsReview** — if all tiers below threshold, flagged for human review
+1. **Rule Engine** (confidence=1.0) - glob/regex pattern matching from rules.yaml
+2. **Filename Embedding** - cosine similarity vs bucket centroids (threshold: 0.80)
+3. **Content Embedding** - for text/PDF files, 8000 char truncation (threshold: 0.75)
+4. **LLM Classifier** - structured JSON response with few-shot examples (threshold: 0.70)
+5. **NeedsReview** - if all tiers below threshold, flagged for human review
 
 Gate result is `Accept { destination, confidence }`, `Escalate`, or `NeedsReview { reason }`.
 
@@ -52,7 +52,7 @@ Gate result is `Accept { destination, confidence }`, `Escalate`, or `NeedsReview
 
 - **AppConfig** (YAML `~/.librarian/config.yaml`): inbox_folders, destination_root, provider settings, thresholds
 - **FileEntry**: path, blake3 hash, extension, size, timestamps, macOS Finder tags/colour (xattr)
-- **Plan**: id (timestamp-based), status (Draft → Applied → RolledBack), Vec\<PlannedAction\>
+- **Plan**: id (timestamp-based), status (Draft -> Applied -> RolledBack), Vec\<PlannedAction\>
 - **PlannedAction**: action_type (Move/Rename/Tag/Skip/NeedsReview/Collision/Ignored), classification_method, confidence
 - **Decision**: append-only JSONL audit log entry with outcome, hash, provider/model, confidence
 
@@ -68,7 +68,7 @@ Gate result is `Accept { destination, confidence }`, `Escalate`, or `NeedsReview
 - Decision logging is append-only JSONL (atomic single writes, no locking)
 - Embedding cache is in-memory HashMap persisted as msgpack between runs
 - Template variables in rule destinations: `{year}`, `{month}`, `{date}`, `{ext}`, `{source}`
-- Plan status is a one-way state machine: Draft → Applied → RolledBack
+- Plan status is a one-way state machine: Draft -> Applied -> RolledBack
 - Learning is isolated per (source_inbox, filetype) tuple to prevent cross-folder data leakage
 - `--aggressive` flag on apply requires `--backup` to have been used (safety gate)
 
@@ -80,8 +80,8 @@ Gate result is `Accept { destination, confidence }`, `Escalate`, or `NeedsReview
 
 ## Config files
 
-- `~/.librarian/config.yaml` — main config (provider, thresholds, inbox folders)
-- `~/.librarian/rules.yaml` — deterministic classification rules (glob, regex, extension, size, content matchers)
-- `~/.librarian/history/decisions.jsonl` — audit log
-- `~/.librarian/history/corrections.jsonl` — learning records
-- `~/.librarian/cache/embeddings.msgpack` — embedding cache
+- `~/.librarian/config.yaml` - main config (provider, thresholds, inbox folders)
+- `~/.librarian/rules.yaml` - deterministic classification rules (glob, regex, extension, size, content matchers)
+- `~/.librarian/history/decisions.jsonl` - audit log
+- `~/.librarian/history/corrections.jsonl` - learning records
+- `~/.librarian/cache/embeddings.msgpack` - embedding cache

@@ -1,6 +1,8 @@
 # Librarian
 
-A command-line tool that organises your files using rules and AI. Point it at messy folders like `~/Downloads`, and it classifies files into a tidy hierarchy — learning from your corrections over time.
+Tired of your Downloads folder being a graveyard of `IMG_4382.jpg`, `invoice_final_v3.pdf`, and that screenshot from six months ago? Librarian sorts it out for you.
+
+It scans folders like `~/Downloads` and `~/Desktop`, figures out where each file should go using a mix of rules you define and AI classification, then moves everything into a clean folder structure. When it gets something wrong, you correct it, and it learns from the mistake.
 
 ## Install
 
@@ -17,33 +19,102 @@ cargo install --git https://github.com/Bigalan09/Librarian.git librarian-cli
 ## Quick start
 
 ```sh
-# Scaffold config and folder structure
 librarian init
-
-# Scan inbox folders and produce a plan
 librarian process --source ~/Downloads
-
-# Review what it wants to do
 librarian plans show latest
-
-# Apply the plan (with backup)
 librarian apply --plan latest --backup
+```
 
-# Changed your mind? Roll it back
+## Use cases
+
+### Taming ~/Downloads
+
+You've got 200+ files in Downloads. PDFs from work, memes, app installers, bank statements, photos. Run `librarian process` and it'll sort them into folders like `2026/04/Work/Invoices/`, `Personal/Photos/`, `Software/Installers/`.
+
+```sh
+librarian process --source ~/Downloads
+librarian plans show latest    # check it looks right
+librarian apply --plan latest --backup
+```
+
+Don't like where something ended up? Move it yourself and Librarian will remember next time:
+
+```sh
+librarian correct ~/Library-Managed/Work/report.pdf --to ~/Library-Managed/Personal/report.pdf
+```
+
+### Writing rules for predictable files
+
+Some files always go to the same place. Bank statements are always PDFs with "statement" in the name. Invoices follow a pattern. Write rules in `~/.librarian/rules.yaml` and they'll match instantly without touching the AI:
+
+```yaml
+rules:
+  - name: "Bank statements"
+    match:
+      extension: "pdf"
+      filename: "*statement*"
+    destination: "{year}/{month}/Finance/Statements"
+    tags: [finance, bank]
+
+  - name: "Screenshots"
+    match:
+      filename: "Screenshot*"
+    destination: "{year}/{month}/Screenshots"
+```
+
+Validate your rules are correct:
+
+```sh
+librarian rules validate
+```
+
+After a few corrections, Librarian can suggest rules for you:
+
+```sh
+librarian rules suggest
+```
+
+### Keeping Desktop clean on a schedule
+
+Point Librarian at your Desktop as well and run it periodically:
+
+```sh
+librarian process --source ~/Desktop ~/Downloads
+librarian apply --plan latest
+```
+
+### Reviewing uncertain files
+
+When Librarian isn't confident enough to classify something, it flags it for review instead of guessing:
+
+```sh
+librarian review
+```
+
+This walks you through each flagged file interactively so you can decide where it goes.
+
+### Undoing a bad run
+
+Applied a plan and it made a mess? Roll it back:
+
+```sh
 librarian rollback --plan latest
 ```
 
+If you used `--backup` when applying, the original files are restored from the backup. Otherwise it reverses the moves.
+
 ## How it works
 
-Librarian uses a **tiered classification pipeline** — each tier either accepts (meets confidence threshold) or escalates to the next:
+Librarian classifies files through four tiers, stopping as soon as one is confident enough:
 
-1. **Rules** — deterministic glob/regex patterns you define in `rules.yaml` (confidence: 1.0)
-2. **Filename embeddings** — cosine similarity against known folder centroids (threshold: 0.80)
-3. **Content embeddings** — for text and PDF files (threshold: 0.75)
-4. **LLM classifier** — structured prompt with few-shot examples (threshold: 0.70)
-5. **Needs review** — if nothing is confident enough, it flags the file for you
+1. **Rules** - your glob/regex patterns from `rules.yaml` (always confident, instant)
+2. **Filename embeddings** - compares the filename against known folder centroids (threshold: 0.80)
+3. **Content embeddings** - reads text/PDF content and compares (threshold: 0.75)
+4. **LLM** - asks a language model with few-shot examples from your past corrections (threshold: 0.70)
 
-When you correct a classification, Librarian remembers — it updates its embedding centroids, feeds corrections into future LLM prompts as few-shot examples, and can even suggest new rules when it spots repeated patterns.
+If nothing passes, the file gets flagged as "needs review" rather than being moved somewhere wrong.
+
+The learning bit: when you correct a file, Librarian shifts its embedding centroids towards the right answer and injects the correction as a few-shot example for the LLM. Corrections are scoped per folder and file type, so fixing a PDF in Downloads won't affect how it handles PNGs from Desktop.
 
 ## Configuration
 
@@ -65,39 +136,29 @@ thresholds:
   llm_confidence: 0.70
 ```
 
-Define classification rules in `~/.librarian/rules.yaml`:
-
-```yaml
-rules:
-  - name: "PDF Invoices"
-    match:
-      extension: "pdf"
-      filename: "*invoice*"
-    destination: "{year}/{month}/Work/Invoices"
-    tags: [invoice, finance]
-```
-
 ## Commands
 
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
-| `init` | Scaffold configuration and folder structure |
-| `process` | Scan inbox folders, classify files, produce a plan |
-| `apply` | Execute a previously generated plan |
-| `rollback` | Reverse an applied plan |
-| `status` | List plans, recent runs, pending reviews |
-| `plans` | Inspect or delete named plans |
-| `rules` | Validate rules or suggest new ones from corrections |
-| `correct` | Record an explicit correction |
-| `review` | Interactive review of flagged files |
-| `config` | Show or edit configuration |
+| `init` | Scaffold config and folder structure |
+| `process --source <paths>` | Scan folders, classify files, produce a plan |
+| `apply --plan <name> [--backup]` | Execute a plan |
+| `rollback --plan <name>` | Reverse an applied plan |
+| `status` | Show plans, recent runs, pending reviews |
+| `plans show <name>` | Inspect a plan |
+| `plans delete <name>` | Delete a plan |
+| `rules validate` | Check your rules.yaml for errors |
+| `rules suggest` | Suggest new rules from correction history |
+| `correct <file> --to <path>` | Record a manual correction |
+| `review` | Walk through files that need human review |
+| `config show` | Print current config |
 
 ## Providers
 
 Librarian works with any OpenAI-compatible API:
 
-- **[LM Studio](https://lmstudio.ai)** — local models, no API key needed (default)
-- **OpenAI** — set `provider_type: openai` and provide an `api_key`
+- **[LM Studio](https://lmstudio.ai)** - run models locally, no API key needed (default)
+- **OpenAI** - set `provider_type: openai` and provide an `api_key`
 
 ## Licence
 
