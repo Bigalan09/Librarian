@@ -231,4 +231,52 @@ mod tests {
             assert_eq!(restored.outcome, outcome);
         }
     }
+
+    /// Verify that every `DecisionType` variant and every `DecisionOutcome`
+    /// variant can be appended via `append_decision` and read back with the
+    /// correct values preserved (full JSONL round-trip through disk I/O).
+    #[test]
+    fn all_variants_round_trip_through_append_decision() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("audit.jsonl");
+
+        // Pair each DecisionType with a corresponding DecisionOutcome so that
+        // every variant of both enums appears at least once.
+        let cases: &[(DecisionType, DecisionOutcome, &str)] = &[
+            (DecisionType::Classification, DecisionOutcome::Success,  "classified by rule"),
+            (DecisionType::Move,           DecisionOutcome::Success,  "moved to /dest/file.pdf"),
+            (DecisionType::Rename,         DecisionOutcome::Success,  "renamed to 2026-04-17_report.pdf"),
+            (DecisionType::Tag,            DecisionOutcome::Success,  "tagged: [work, invoice]"),
+            (DecisionType::Skip,           DecisionOutcome::Skipped,  "skipped: already organised"),
+            (DecisionType::Collision,      DecisionOutcome::Skipped,  "collision: destination exists"),
+            (DecisionType::Correction,     DecisionOutcome::Corrected,"rollback: reversed move"),
+            (DecisionType::Reorganisation, DecisionOutcome::Failed,   "reorganisation failed"),
+            (DecisionType::Ignored,        DecisionOutcome::Skipped,  "ignored by .librarianignore"),
+        ];
+
+        for (i, &(dt, outcome, action)) in cases.iter().enumerate() {
+            let d = Decision::new(
+                dt,
+                &format!("hash{}", i),
+                PathBuf::from(format!("/file{}.txt", i)),
+                action,
+                outcome,
+            );
+            append_decision(&log_path, &d).unwrap();
+        }
+
+        let decisions = read_decisions(&log_path).unwrap();
+        assert_eq!(decisions.len(), cases.len(), "every appended decision must be readable");
+
+        for (i, (&(dt, outcome, action), decision)) in cases.iter().zip(decisions.iter()).enumerate() {
+            assert_eq!(decision.decision_type, dt,
+                "row {}: decision_type mismatch", i);
+            assert_eq!(decision.outcome, outcome,
+                "row {}: outcome mismatch", i);
+            assert_eq!(decision.action, action,
+                "row {}: action mismatch", i);
+            assert_eq!(decision.file_hash, format!("hash{}", i),
+                "row {}: file_hash mismatch", i);
+        }
+    }
 }

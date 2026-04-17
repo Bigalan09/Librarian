@@ -155,6 +155,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_max_files_exact_limit() {
+        // Create a directory with 12 visible files.
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..12 {
+            std::fs::write(dir.path().join(format!("file{:02}.txt", i)), b"x").unwrap();
+        }
+        let engine = IgnoreEngine::new(dir.path(), None).unwrap();
+        let entries = scan_directory(dir.path(), "test", &engine, 5)
+            .await
+            .unwrap();
+
+        // Must return exactly 5 — no more, no fewer.
+        assert_eq!(entries.len(), 5, "expected exactly 5 entries with max_files=5, got {}", entries.len());
+    }
+
+    #[tokio::test]
     async fn scan_populates_source_inbox() {
         let dir = create_test_dir();
         let engine = IgnoreEngine::new(dir.path(), None).unwrap();

@@ -1374,6 +1374,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "blake3",
+ "chrono",
  "clap",
  "indicatif",
  "librarian-classifier",
@@ -1413,6 +1415,7 @@ dependencies = [
 name = "librarian-learning"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "blake3",
  "chrono",
  "librarian-core",
@@ -1449,11 +1452,13 @@ dependencies = [
 name = "librarian-rules"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "globset",
  "librarian-core",
  "regex",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",

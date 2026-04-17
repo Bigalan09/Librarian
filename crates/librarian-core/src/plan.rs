@@ -529,6 +529,60 @@ impl Plan {
         Ok(report)
     }
 
+    // ----- Soft-delete (_Trash/) -------------------------------------------
+
+    /// Move `file_path` into a managed `_Trash/` directory, preserving the
+    /// file's path relative to `source_root` (or just the filename if the
+    /// file is not under `source_root`).
+    ///
+    /// The trash layout is: `{trash_dir}/{plan_id}/{relative_path}`.
+    ///
+    /// Logs a `DecisionType::Move` with action `"soft_delete"` to
+    /// `decision_log_path`.  Returns the new path inside the trash directory.
+    pub fn soft_delete(
+        &self,
+        file_path: &Path,
+        source_root: &Path,
+        trash_dir: &Path,
+        decision_log_path: &Path,
+    ) -> Result<PathBuf> {
+        let rel = file_path
+            .strip_prefix(source_root)
+            .unwrap_or_else(|_| {
+                file_path
+                    .file_name()
+                    .map(Path::new)
+                    .unwrap_or(Path::new("unknown"))
+            });
+
+        let trash_dest = trash_dir.join(&self.id).join(rel);
+
+        if let Some(parent) = trash_dest.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("creating trash directory {}", parent.display())
+            })?;
+        }
+
+        std::fs::rename(file_path, &trash_dest).with_context(|| {
+            format!(
+                "moving {} to trash {}",
+                file_path.display(),
+                trash_dest.display()
+            )
+        })?;
+
+        let decision = Decision::new(
+            DecisionType::Move,
+            "",
+            file_path.to_path_buf(),
+            &format!("soft_delete: moved to {}", trash_dest.display()),
+            DecisionOutcome::Success,
+        );
+        let _ = append_decision(decision_log_path, &decision);
+
+        Ok(trash_dest)
+    }
+
     // ----- Rollback --------------------------------------------------------
 
     /// Reverse all applied actions. If a backup exists, restore from backup
@@ -1203,5 +1257,48 @@ mod tests {
 
         let plans = Plan::list(&plans_dir).unwrap();
         assert_eq!(plans.len(), 2);
+    }
+
+    // ----- Soft delete (_Trash/) -------------------------------------------
+
+    #[test]
+    fn soft_delete_moves_file_to_trash_and_can_be_restored() {
+        let dir = tempdir().unwrap();
+        let source_root = dir.path().join("inbox");
+        let trash_dir = dir.path().join("_Trash");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&source_root).unwrap();
+
+        // Write a file to soft-delete.
+        let file = source_root.join("report.pdf");
+        std::fs::write(&file, b"sensitive data").unwrap();
+        assert!(file.exists());
+
+        let plan = Plan::new("trash-test", vec![source_root.clone()], dir.path().join("dest"));
+
+        let trash_path = plan
+            .soft_delete(&file, &source_root, &trash_dir, &log)
+            .unwrap();
+
+        // Original should be gone; trash copy should exist.
+        assert!(!file.exists(), "original file should have been moved");
+        assert!(trash_path.exists(), "file should exist in trash");
+        assert_eq!(
+            std::fs::read_to_string(&trash_path).unwrap(),
+            "sensitive data"
+        );
+
+        // Decision log should record the soft_delete.
+        let decisions = crate::decision::read_decisions(&log).unwrap();
+        assert_eq!(decisions.len(), 1);
+        assert!(decisions[0].action.contains("soft_delete"));
+
+        // Restore: move back from trash to original location.
+        std::fs::rename(&trash_path, &file).unwrap();
+        assert!(file.exists(), "file should be restored to original location");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "sensitive data"
+        );
     }
 }

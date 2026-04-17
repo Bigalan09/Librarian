@@ -164,25 +164,25 @@
 
 ### Tests for User Story 3
 
-- [ ] T073 [P] {sonnet} [US3] Write unit tests for correction recording in `crates/librarian-learning/src/corrections.rs` — test Watched, Explicit, Review correction sources, JSONL append, correction window hard cutoff (14d default), reorganisation logging for post-window moves
-- [ ] T074 [P] {opus} [US3] Write unit tests for few-shot selection in `crates/librarian-learning/src/fewshot.rs` — test last-N filtering by folder and filetype, prompt formatting with correction examples, isolation (Downloads corrections do not appear for Desktop)
-- [ ] T075 [P] {sonnet} [US3] Write unit tests for centroid drift in `crates/librarian-learning/src/centroid.rs` — test centroid recalculation after correction, per-folder and per-filetype scoping, weighted update
-- [ ] T076 [P] {sonnet} [US3] Write unit tests for rule suggestion in `crates/librarian-rules/src/suggestion.rs` — test 3-correction threshold (same source, filetype, target), YAML generation, diff against current rules
+- [x] T073 [P] {sonnet} [US3] Write unit tests for correction recording in `crates/librarian-learning/src/corrections.rs` — test Watched, Explicit, Review correction sources, JSONL append, correction window hard cutoff (14d default), reorganisation logging for post-window moves
+- [x] T074 [P] {opus} [US3] Write unit tests for few-shot selection in `crates/librarian-learning/src/fewshot.rs` — test last-N filtering by folder and filetype, prompt formatting with correction examples, isolation (Downloads corrections do not appear for Desktop)
+- [x] T075 [P] {sonnet} [US3] Write unit tests for centroid drift in `crates/librarian-learning/src/centroid.rs` — test centroid recalculation after correction, per-folder and per-filetype scoping, weighted update
+- [x] T076 [P] {sonnet} [US3] Write unit tests for rule suggestion in `crates/librarian-rules/src/suggestion.rs` — test 3-correction threshold (same source, filetype, target), YAML generation, diff against current rules
 - [ ] T077 {opus} [US3] Write integration test for correction feedback loop in `tests/integration/correction_feedback.rs` — full cycle: process, apply, simulate correction (move file), process again with similar file, verify classification reflects correction
 
 ### Implementation for User Story 3
 
-- [ ] T078 {opus} [US3] Implement correction recording in `crates/librarian-learning/src/corrections.rs` — Correction struct per data model, three sources (Watched, Explicit, Review), JSONL append to both `decisions.jsonl` (full audit log) and `corrections.jsonl` (subset for fast scanning by few-shot selection), correction window check with hard cutoff, `type: reorganisation` logging for post-window moves
-- [ ] T079 {opus} [US3] Implement few-shot example selection in `crates/librarian-learning/src/fewshot.rs` — scan corrections.jsonl, filter by source_inbox and filetype, select last N (default 20), format as prompt examples per PRD section 10 Layer A, enforce per-folder isolation
-- [ ] T080 {sonnet} [US3] Implement centroid drift in `crates/librarian-learning/src/centroid.rs` — recalculate bucket centroid when correction recorded, weighted running average, per-folder and per-filetype scoping, persist to `~/.librarian/state/centroids.msgpack`
-- [ ] T081 {sonnet} [US3] Implement filesystem watcher for corrections in `crates/librarian-learning/src/watcher.rs` — `notify` crate, watch destination directories, detect file hash reappearing at new path within correction window, record Watched correction
-- [ ] T082 {sonnet} [US3] Implement rule suggestion in `crates/librarian-rules/src/suggestion.rs` — scan corrections for 3x same pattern (source folder + filetype + target), generate Rule YAML entry, diff against current rules.yaml
+- [x] T078 {opus} [US3] Implement correction recording in `crates/librarian-learning/src/corrections.rs` — Correction struct per data model, three sources (Watched, Explicit, Review), JSONL append to both `decisions.jsonl` (full audit log) and `corrections.jsonl` (subset for fast scanning by few-shot selection), correction window check with hard cutoff, `type: reorganisation` logging for post-window moves
+- [x] T079 {opus} [US3] Implement few-shot example selection in `crates/librarian-learning/src/fewshot.rs` — scan corrections.jsonl, filter by source_inbox and filetype, select last N (default 20), format as prompt examples per PRD section 10 Layer A, enforce per-folder isolation
+- [x] T080 {sonnet} [US3] Implement centroid drift in `crates/librarian-learning/src/centroid.rs` — recalculate bucket centroid when correction recorded, weighted running average, per-folder and per-filetype scoping, persist to `~/.librarian/state/centroids.msgpack`
+- [x] T081 {sonnet} [US3] Implement filesystem watcher for corrections in `crates/librarian-learning/src/watcher.rs` — `notify` crate, watch destination directories, detect file hash reappearing at new path within correction window, record Watched correction
+- [x] T082 {sonnet} [US3] Implement rule suggestion in `crates/librarian-rules/src/suggestion.rs` — scan corrections for 3x same pattern (source folder + filetype + target), generate Rule YAML entry, diff against current rules.yaml
 - [ ] T083 {sonnet} [US3] Update LLM classifier in `crates/librarian-classifier/src/llm.rs` — integrate few-shot injection from librarian-learning, prepend correction examples to classification prompt
 - [ ] T084 {sonnet} [US3] Update Qdrant integration in `crates/librarian-classifier/src/qdrant.rs` — on correction, update centroid vectors via centroid.rs, re-index affected bucket
-- [ ] T085 {sonnet} [US3] Implement `librarian correct` command in `crates/librarian-cli/src/commands/correct.rs` — `--to` and `--retag` flags, record Explicit correction, update centroids
-- [ ] T086 {sonnet} [US3] Implement `librarian review` command in `crates/librarian-cli/src/commands/review.rs` — one-file-at-a-time interactive review of NeedsReview folder (v1: sequential prompts, not TUI), accept/reject/skip, record Review corrections
-- [ ] T087 {sonnet} [US3] Implement `librarian rules suggest` command in `crates/librarian-cli/src/commands/rules.rs` — invoke suggestion engine, print proposed YAML entries with diff
-- [ ] T088 [P] {haiku} [US3] Implement lib.rs for librarian-learning in `crates/librarian-learning/src/lib.rs` — re-export Corrections, FewShot, Centroid, Watcher
+- [x] T085 {sonnet} [US3] Implement `librarian correct` command in `crates/librarian-cli/src/commands/correct.rs` — `--to` and `--retag` flags, record Explicit correction, update centroids
+- [x] T086 {sonnet} [US3] Implement `librarian review` command in `crates/librarian-cli/src/commands/review.rs` — one-file-at-a-time interactive review of NeedsReview folder (v1: sequential prompts, not TUI), accept/reject/skip, record Review corrections
+- [x] T087 {sonnet} [US3] Implement `librarian rules suggest` command in `crates/librarian-cli/src/commands/rules.rs` — invoke suggestion engine, print proposed YAML entries with diff
+- [x] T088 [P] {haiku} [US3] Implement lib.rs for librarian-learning in `crates/librarian-learning/src/lib.rs` — re-export Corrections, FewShot, Centroid, Watcher
 
 **Checkpoint**: User Story 3 functional. Corrections feed back via all three channels. `librarian correct`, `librarian rules suggest`, and `librarian review` all work. Classification improves after corrections.
 
@@ -196,16 +196,16 @@
 
 ### Tests for User Story 4
 
-- [ ] T089 [P] {sonnet} [US4] Write unit test for move limit in `crates/librarian-core/src/walker.rs` — test that scan stops proposing after max_moves_per_run (default 500), partial plan saved, limit-reached reported in PlanStats
-- [ ] T090 [P] {sonnet} [US4] Write unit test for managed `_Trash/` in `crates/librarian-core/src/plan.rs` — test soft-delete moves files to `<destination>/_Trash/<plan-id>/`, preserves relative paths, reversible via rollback, tracked in decision log
-- [ ] T091 [P] {sonnet} [US4] Write unit test for decision log completeness in `crates/librarian-core/src/decision.rs` — verify every operation type (Move, Tag, Skip, Collision, Correction, Reorganisation, Ignored) produces a log entry with all required fields
+- [x] T089 [P] {sonnet} [US4] Write unit test for move limit in `crates/librarian-core/src/walker.rs` — test that scan stops proposing after max_moves_per_run (default 500), partial plan saved, limit-reached reported in PlanStats
+- [x] T090 [P] {sonnet} [US4] Write unit test for managed `_Trash/` in `crates/librarian-core/src/plan.rs` — test soft-delete moves files to `<destination>/_Trash/<plan-id>/`, preserves relative paths, reversible via rollback, tracked in decision log
+- [x] T091 [P] {sonnet} [US4] Write unit test for decision log completeness in `crates/librarian-core/src/decision.rs` — verify every operation type (Move, Tag, Skip, Collision, Correction, Reorganisation, Ignored) produces a log entry with all required fields
 - [ ] T092 {opus} [US4] Write integration test for safety guarantees in `tests/integration/process_apply_rollback.rs` — full cycle: process >500 files (verify limit), apply with --backup, apply --aggressive (verify gate from T036), soft-delete to _Trash, rollback from backup, verify zero data loss
 
 ### Implementation for User Story 4
 
-- [ ] T093 {sonnet} [US4] Implement move limit enforcement in `crates/librarian-core/src/walker.rs` — count proposed moves during scan, stop after max_moves_per_run, mark plan as partial, include limit-reached in PlanStats
-- [ ] T094 {sonnet} [US4] Implement managed `_Trash/` in `crates/librarian-core/src/plan.rs` — soft-delete moves files to `<destination>/_Trash/<plan-id>/` preserving relative paths, reversible via rollback, tracked in decision log
-- [ ] T095 {sonnet} [US4] Audit decision log coverage across all crates — verify every code path that modifies files, tags, or state writes a Decision entry with all required fields per data model. Add missing log calls if any.
+- [x] T093 {sonnet} [US4] Implement move limit enforcement in `crates/librarian-core/src/walker.rs` — count proposed moves during scan, stop after max_moves_per_run, mark plan as partial, include limit-reached in PlanStats
+- [x] T094 {sonnet} [US4] Implement managed `_Trash/` in `crates/librarian-core/src/plan.rs` — soft-delete moves files to `<destination>/_Trash/<plan-id>/` preserving relative paths, reversible via rollback, tracked in decision log
+- [x] T095 {sonnet} [US4] Audit decision log coverage across all crates — verify every code path that modifies files, tags, or state writes a Decision entry with all required fields per data model. Add missing log calls if any.
 
 **Checkpoint**: User Story 4 functional. Move limit, managed trash, and audit coverage in place. Combined with US1 backup/aggressive gate, all safety guarantees are complete.
 
