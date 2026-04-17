@@ -13,6 +13,7 @@ rmp-serde.workspace = true
 blake3.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+anyhow.workspace = true
 
 [dev-dependencies]
 mockito.workspace = true
