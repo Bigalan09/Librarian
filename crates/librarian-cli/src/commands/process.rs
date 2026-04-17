@@ -24,6 +24,21 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut cfg = config::load_default()?;
 
+    // Validate config
+    match config::validate(&cfg) {
+        Ok(warnings) => {
+            for w in &warnings {
+                tracing::warn!("{w}");
+            }
+        }
+        Err(errors) => {
+            for e in &errors {
+                tracing::error!("{e}");
+            }
+            anyhow::bail!("Configuration has {} error(s). Fix config.yaml and retry.", errors.len());
+        }
+    }
+
     // Apply CLI overrides to config
     if let Some(p) = &provider {
         cfg.provider.provider_type = match p.as_str() {
@@ -61,7 +76,7 @@ pub async fn run(
     let ai_provider = if provider.is_some() {
         match librarian_providers::router::ProviderRouter::new(&cfg.provider).await {
             Ok(router) => {
-                tracing::info!("AI provider connected: {}", router.active().name());
+                tracing::info!("AI provider connected: {}", router.active()?.name());
                 Some(router)
             }
             Err(e) => {
@@ -80,6 +95,7 @@ pub async fn run(
 
     // Scan each source folder
     let mut all_entries = Vec::new();
+    let scan_start = std::time::Instant::now();
     for src in &sources {
         if !src.exists() {
             tracing::warn!("source folder does not exist: {}", src.display());
@@ -98,14 +114,23 @@ pub async fn run(
             cfg.max_moves_per_run as usize,
         )
         .await?;
+
+        let hash_start = std::time::Instant::now();
         walker::hash_entries(&mut entries).await?;
+        tracing::debug!(
+            elapsed_ms = hash_start.elapsed().as_millis() as u64,
+            count = entries.len(),
+            "hashed files",
+        );
+
         all_entries.extend(entries);
     }
 
     tracing::info!(
-        "scanned {} file(s) from {} source(s)",
-        all_entries.len(),
-        sources.len()
+        elapsed_ms = scan_start.elapsed().as_millis() as u64,
+        files = all_entries.len(),
+        sources = sources.len(),
+        "scan complete",
     );
 
     // Build plan name
@@ -126,6 +151,7 @@ pub async fn run(
     let gate = librarian_classifier::ConfidenceGate::new(cfg.thresholds.clone());
 
     // Classify each file
+    let classify_start = std::time::Instant::now();
     for entry in &all_entries {
         // Step 1: Rules (deterministic, always first)
         if let Some(rule) = engine.evaluate(entry) {
@@ -152,7 +178,7 @@ pub async fn run(
 
         // Step 2-5: AI classification (if provider available)
         if let Some(ref router) = ai_provider {
-            let provider = router.active();
+            let provider = router.active()?;
 
             // Step 2: Filename embedding
             let _filename_result = librarian_classifier::embedding::embed_text_dyn(
@@ -258,6 +284,14 @@ pub async fn run(
             stats.skipped += 1;
         }
     }
+
+    tracing::info!(
+        elapsed_ms = classify_start.elapsed().as_millis() as u64,
+        rule_matched = stats.rule_matched,
+        ai_classified = stats.ai_classified,
+        needs_review = stats.needs_review,
+        "classification complete",
+    );
 
     // Save embedding cache
     if let Err(e) = embed_cache.save(&cache_path) {

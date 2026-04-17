@@ -1,5 +1,6 @@
-//! `librarian plans` — list, show, delete named plans.
+//! `librarian plans` - list, show, delete, and clean named plans.
 
+use chrono::Utc;
 use librarian_core::config;
 use librarian_core::plan::Plan;
 
@@ -74,6 +75,36 @@ pub async fn show(name: &str) -> anyhow::Result<()> {
         println!("  ... and {} more", plan.actions.len() - 20);
     }
 
+    Ok(())
+}
+
+pub async fn clean(max_age_days: u32) -> anyhow::Result<()> {
+    let plans_dir = config::librarian_home().join("plans");
+    if !plans_dir.exists() {
+        println!("No plans found.");
+        return Ok(());
+    }
+
+    let plans = Plan::list(&plans_dir)?;
+    let cutoff = Utc::now() - chrono::Duration::days(max_age_days as i64);
+    let mut removed = 0;
+
+    for plan in &plans {
+        if plan.created_at < cutoff {
+            let path = plans_dir.join(format!("{}.json", plan.id));
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+                removed += 1;
+            }
+        }
+    }
+
+    println!(
+        "Cleaned {} plan(s) older than {} days ({} remaining).",
+        removed,
+        max_age_days,
+        plans.len() - removed,
+    );
     Ok(())
 }
 

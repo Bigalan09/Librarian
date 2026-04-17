@@ -68,20 +68,20 @@ impl ProviderRouter {
 
     /// Get a reference to the active provider.
     ///
-    /// # Panics
-    ///
-    /// Panics if the active provider was not initialised (should not happen
-    /// after successful `new()`).
-    pub fn active(&self) -> &dyn ErasedProvider {
+    /// Returns an error if the active provider was not initialised (should not
+    /// happen after successful `new()`).
+    pub fn active(&self) -> anyhow::Result<&dyn ErasedProvider> {
         match self.active_type {
             ProviderType::LmStudio => self
                 .lmstudio
                 .as_ref()
-                .expect("LmStudio provider not initialised"),
+                .map(|p| p as &dyn ErasedProvider)
+                .ok_or_else(|| anyhow::anyhow!("LmStudio provider not initialised")),
             ProviderType::OpenAi => self
                 .openai
                 .as_ref()
-                .expect("OpenAi provider not initialised"),
+                .map(|p| p as &dyn ErasedProvider)
+                .ok_or_else(|| anyhow::anyhow!("OpenAi provider not initialised")),
         }
     }
 

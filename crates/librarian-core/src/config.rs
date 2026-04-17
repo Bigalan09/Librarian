@@ -176,6 +176,53 @@ pub fn expand_tilde(path: &Path) -> PathBuf {
     }
 }
 
+/// Validate that the config has sensible values.
+///
+/// Returns a list of warnings (non-fatal) and errors (fatal).
+/// Call this after loading to catch misconfiguration early.
+pub fn validate(config: &AppConfig) -> Result<Vec<String>, Vec<String>> {
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+
+    // Thresholds must be in [0.0, 1.0]
+    let check_threshold = |name: &str, val: f64, errors: &mut Vec<String>| {
+        if !(0.0..=1.0).contains(&val) {
+            errors.push(format!("{name} threshold must be between 0.0 and 1.0, got {val}"));
+        }
+    };
+    check_threshold("filename_embedding", config.thresholds.filename_embedding, &mut errors);
+    check_threshold("content_embedding", config.thresholds.content_embedding, &mut errors);
+    check_threshold("llm_confidence", config.thresholds.llm_confidence, &mut errors);
+
+    if config.max_moves_per_run == 0 {
+        errors.push("max_moves_per_run must be greater than 0".to_string());
+    }
+
+    // Check inbox folders exist
+    for folder in &config.inbox_folders {
+        if !folder.exists() {
+            warnings.push(format!("inbox folder does not exist: {}", folder.display()));
+        }
+    }
+
+    // Check destination root is writable (by checking parent exists)
+    if !config.destination_root.exists()
+        && let Some(parent) = config.destination_root.parent()
+        && !parent.exists()
+    {
+        warnings.push(format!(
+            "destination root parent does not exist: {}",
+            parent.display()
+        ));
+    }
+
+    if errors.is_empty() {
+        Ok(warnings)
+    } else {
+        Err(errors)
+    }
+}
+
 /// Load configuration from a YAML file, merging with defaults.
 /// Expands `~` in all path fields to the user's home directory.
 pub fn load(path: &std::path::Path) -> anyhow::Result<AppConfig> {
@@ -262,6 +309,40 @@ max_moves_per_run: 100
         let cfg = load(&path).unwrap();
         assert_eq!(cfg.inbox_folders, vec![PathBuf::from("/tmp/test")]);
         assert_eq!(cfg.max_moves_per_run, 42);
+    }
+
+    #[test]
+    fn validate_default_config_passes() {
+        let cfg = AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        let result = validate(&cfg);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_bad_thresholds() {
+        let mut cfg = AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        cfg.thresholds.filename_embedding = 1.5;
+        let result = validate(&cfg);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors[0].contains("filename_embedding"));
+    }
+
+    #[test]
+    fn validate_rejects_zero_max_moves() {
+        let cfg = AppConfig {
+            inbox_folders: vec![],
+            max_moves_per_run: 0,
+            ..Default::default()
+        };
+        let result = validate(&cfg);
+        assert!(result.is_err());
     }
 
     #[test]

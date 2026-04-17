@@ -28,8 +28,13 @@ impl LmStudio {
         llm_model: Option<&str>,
         embed_model: Option<&str>,
     ) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            client: Client::new(),
+            client,
             base_url: base_url
                 .unwrap_or("http://localhost:1234/v1")
                 .trim_end_matches('/')

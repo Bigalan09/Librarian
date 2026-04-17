@@ -76,8 +76,13 @@ impl OpenAi {
         embed_model: Option<&str>,
         rpm: Option<u32>,
     ) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            client: Client::new(),
+            client,
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: api_key.to_string(),
             llm_model: llm_model.unwrap_or("gpt-4o-mini").to_string(),
@@ -106,36 +111,68 @@ impl OpenAi {
         }
     }
 
-    /// Send a request, handling 429 with a single retry.
+    /// Send a request, retrying on 429 (rate limit) and 5xx (server error).
+    ///
+    /// Retries up to 2 times with exponential backoff (1s, 2s).
     async fn request_with_retry(
         &self,
         request: reqwest::RequestBuilder,
     ) -> anyhow::Result<reqwest::Response> {
-        self.rate_limiter.acquire().await;
+        const MAX_RETRIES: u32 = 2;
 
-        let cloned = request
+        // Clone upfront for potential retries
+        let mut current = request
+            .try_clone()
+            .ok_or_else(|| anyhow::anyhow!("Failed to clone request for retry"))?;
+        let original = current
             .try_clone()
             .ok_or_else(|| anyhow::anyhow!("Failed to clone request for retry"))?;
 
-        let resp = request.send().await?;
+        self.rate_limiter.acquire().await;
+        let resp = {
+            let r = original;
+            r.send().await?
+        };
 
-        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(1);
-
-            warn!(retry_after_secs = retry_after, "Rate limited (429), retrying");
-            tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
-
-            self.rate_limiter.acquire().await;
-            let resp2 = cloned.send().await?;
-            return Ok(resp2);
+        let status = resp.status();
+        if !status.is_server_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Ok(resp);
         }
 
-        Ok(resp)
+        // Retryable error - try up to MAX_RETRIES more times
+        let mut last_resp = resp;
+        for attempt in 1..=MAX_RETRIES {
+            let delay = if last_resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = last_resp
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(1);
+                warn!(retry_after_secs = retry_after, attempt, "Rate limited (429), retrying");
+                std::time::Duration::from_secs(retry_after)
+            } else {
+                let secs = 1u64 << (attempt - 1); // 1s, 2s
+                warn!(status = %last_resp.status(), attempt, "Server error, retrying in {secs}s");
+                std::time::Duration::from_secs(secs)
+            };
+
+            tokio::time::sleep(delay).await;
+            self.rate_limiter.acquire().await;
+
+            let next = current
+                .try_clone()
+                .ok_or_else(|| anyhow::anyhow!("Failed to clone request for retry"))?;
+            last_resp = current.send().await?;
+            current = next;
+
+            let status = last_resp.status();
+            if !status.is_server_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Ok(last_resp);
+            }
+        }
+
+        Ok(last_resp)
     }
 }
 
@@ -228,6 +265,7 @@ impl Provider for OpenAi {
         temperature: f64,
         max_tokens: u32,
     ) -> anyhow::Result<ChatResponse> {
+        let start = std::time::Instant::now();
         debug!(model = %self.llm_model, "OpenAI chat request");
 
         let url = format!("{}/chat/completions", self.base_url);
@@ -262,6 +300,7 @@ impl Provider for OpenAi {
             .next()
             .ok_or_else(|| anyhow::anyhow!("No choices in OpenAI response"))?;
 
+        debug!(elapsed_ms = start.elapsed().as_millis() as u64, "OpenAI chat complete");
         Ok(ChatResponse {
             content: choice.message.content,
             model: completion.model,
@@ -269,6 +308,7 @@ impl Provider for OpenAi {
     }
 
     async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+        let start = std::time::Instant::now();
         debug!(model = %self.embed_model, count = texts.len(), "OpenAI embed request");
 
         let url = format!("{}/embeddings", self.base_url);
@@ -295,6 +335,7 @@ impl Provider for OpenAi {
         }
 
         let embedding_resp: EmbeddingResponse = resp.json().await?;
+        debug!(elapsed_ms = start.elapsed().as_millis() as u64, "OpenAI embed complete");
         Ok(embedding_resp.data.into_iter().map(|d| d.embedding).collect())
     }
 
@@ -453,12 +494,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handles_500_server_error() {
+    async fn handles_500_server_error_with_retries() {
         let mut server = mockito::Server::new_async().await;
+        // Should receive 3 requests: 1 original + 2 retries
         let mock = server
             .mock("POST", "/v1/chat/completions")
             .with_status(500)
             .with_body(r#"{"error":{"message":"Internal server error"}}"#)
+            .expect(3)
             .create_async()
             .await;
 
@@ -478,6 +521,53 @@ mod tests {
         let err = provider.chat(msgs, 0.7, 256).await.unwrap_err();
         assert!(err.to_string().contains("500"));
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn retries_500_then_succeeds() {
+        let mut server = mockito::Server::new_async().await;
+
+        // First call returns 500
+        let mock_500 = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body(r#"{"error":{"message":"Internal server error"}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        // Second call (retry) returns 200
+        let mock_200 = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+                    "choices": [{"message": {"role": "assistant", "content": "Recovered"}}],
+                    "model": "gpt-4o-mini"
+                }"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "test-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let msgs = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let resp = provider.chat(msgs, 0.7, 256).await.unwrap();
+        assert_eq!(resp.content, "Recovered");
+        mock_500.assert_async().await;
+        mock_200.assert_async().await;
     }
 
     #[test]
