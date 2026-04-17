@@ -32,12 +32,12 @@
 **Purpose**: Cargo workspace initialisation and shared project scaffolding
 
 - [ ] T001 {sonnet} Create Cargo workspace root `Cargo.toml` with 6 member crates (librarian-core, librarian-rules, librarian-providers, librarian-classifier, librarian-learning, librarian-cli)
-- [ ] T002 [P] {haiku} Create `crates/librarian-core/Cargo.toml` with dependencies: serde, serde_json, serde_yaml, blake3, chrono, thiserror, tracing
+- [ ] T002 [P] {haiku} Create `crates/librarian-core/Cargo.toml` with dependencies: serde, serde_json, serde_yaml, blake3, chrono, thiserror, tracing, xattr, plist, ignore (plist for Finder tag binary plist encoding, ignore for gitignore-syntax .librarianignore parsing)
 - [ ] T003 [P] {haiku} Create `crates/librarian-rules/Cargo.toml` with dependencies: globset, regex, serde, serde_yaml, thiserror, librarian-core
 - [ ] T004 [P] {haiku} Create `crates/librarian-providers/Cargo.toml` with dependencies: reqwest, tokio, serde, serde_json, rmp-serde, thiserror, tracing, librarian-core
 - [ ] T005 [P] {haiku} Create `crates/librarian-classifier/Cargo.toml` with dependencies: qdrant-client, librarian-core, librarian-providers, librarian-rules, thiserror, tracing
 - [ ] T006 [P] {haiku} Create `crates/librarian-learning/Cargo.toml` with dependencies: notify, librarian-core, librarian-providers, thiserror, tracing
-- [ ] T007 [P] {haiku} Create `crates/librarian-cli/Cargo.toml` with dependencies: clap (derive), tokio, indicatif, tracing-subscriber, all librarian-* crates
+- [ ] T007 [P] {haiku} Create `crates/librarian-cli/Cargo.toml` with dependencies: clap (derive), tokio, indicatif, tracing-subscriber, all librarian-* crates; dev-dependencies: assert_cmd, tempfile, mockito, predicates
 - [ ] T008 [P] {haiku} Create `tests/fixtures/sample_rules.yaml` with example rules covering glob and regex patterns per research R12
 - [ ] T009 [P] {haiku} Create `tests/fixtures/sample_config.yaml` with default config per AppConfig data model
 - [ ] T010 [P] {haiku} Create `tests/fixtures/sample_files/` directory with test files: 3 PDFs, 2 PNGs, 1 CSV, 1 markdown, 1 plain text
@@ -98,12 +98,12 @@
 - [ ] T033 [P] {sonnet} [US1] Implement rules YAML loader in `crates/librarian-rules/src/loader.rs` — parse Rule and MatchCriteria per data model, validate patterns (compile glob/regex), report errors with line numbers
 - [ ] T034 {opus} [US1] Implement rules engine in `crates/librarian-rules/src/engine.rs` — evaluate FileEntry against Vec<Rule>, glob matching via `globset`, regex opt-in via `regex:` prefix detection, first-match-wins precedence, AND logic for multi-field criteria, content matching for text files only
 - [ ] T035 {sonnet} [US1] Implement Plan data model in `crates/librarian-core/src/plan.rs` — Plan, PlannedAction, PlanStatus, ActionType, PlanStats structs per data model, JSON serialisation/deserialisation, plan naming (auto-generate from source+timestamp)
-- [ ] T036 {opus} [US1] Implement plan apply logic in `crates/librarian-core/src/plan.rs` — execute PlannedActions (create dirs respecting 3-level max, move files, apply tags via tags.rs, handle collisions with skip+warn), update plan status, write decision log entries, backup support (copy originals before moves)
+- [ ] T036 {opus} [US1] Implement plan apply logic in `crates/librarian-core/src/plan.rs` — execute PlannedActions (create dirs respecting 3-level max, move files, apply tags via tags.rs, handle collisions with skip+warn), update plan status, write decision log entries, backup support (copy originals to `~/.librarian/backup/<plan-id>/` preserving relative paths when `--backup` flag set), aggressive gate (refuse `--aggressive` unless `--backup` succeeded for the exact same plan)
 - [ ] T037 {opus} [US1] Implement plan rollback logic in `crates/librarian-core/src/plan.rs` — reverse applied moves, remove applied tags, restore from backup if available, update plan status, write decision log entries
 - [ ] T038 [P] {sonnet} [US1] Implement junk filename cleaner in `crates/librarian-core/src/plan.rs` — detect and clean patterns: `IMG_NNNN`, `Screenshot YYYY-MM-DD at HH.MM.SS`, `scan_NNNN`, applied during moves even without `--rename`
 - [ ] T039 [P] {sonnet} [US1] Implement rename logic in `crates/librarian-core/src/plan.rs` — `YYYY-MM-DD_descriptive-slug.ext` format, preserve original name in xattr `com.apple.metadata:LibrarianOriginalName`, only when `--rename` flag set
 - [ ] T040 {sonnet} [US1] Implement `librarian process` command in `crates/librarian-cli/src/commands/process.rs` — wire scanner, rules engine, plan generation; output progress bars via indicatif; save plan to `~/.librarian/plans/`; respect `--dry-run` (default true), `--source`, `--destination`, `--rules`, `--plan-name`, `--rename` flags
-- [ ] T041 [P] {sonnet} [US1] Implement `librarian apply` command in `crates/librarian-cli/src/commands/apply.rs` — load plan, execute apply logic, `--backup` flag, `--aggressive` gate (require backup for same plan), `--dry-run` flag
+- [ ] T041 [P] {sonnet} [US1] Implement `librarian apply` command in `crates/librarian-cli/src/commands/apply.rs` — load plan by name or most recent, execute apply logic from T036, wire `--backup`, `--aggressive`, and `--dry-run` flags per CLI contract
 - [ ] T042 [P] {sonnet} [US1] Implement `librarian rollback` command in `crates/librarian-cli/src/commands/rollback.rs` — load plan by name or most recent applied, execute rollback
 - [ ] T043 [P] {sonnet} [US1] Implement `librarian status` command in `crates/librarian-cli/src/commands/status.rs` — list recent plans with status, pending review count, last run info
 - [ ] T044 [P] {sonnet} [US1] Implement `librarian plans` command in `crates/librarian-cli/src/commands/plans.rs` — list/show/delete subcommands per CLI contract
@@ -172,7 +172,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T078 {opus} [US3] Implement correction recording in `crates/librarian-learning/src/corrections.rs` — Correction struct per data model, three sources (Watched, Explicit, Review), JSONL append to `corrections.jsonl`, correction window check with hard cutoff, `type: reorganisation` logging for post-window moves
+- [ ] T078 {opus} [US3] Implement correction recording in `crates/librarian-learning/src/corrections.rs` — Correction struct per data model, three sources (Watched, Explicit, Review), JSONL append to both `decisions.jsonl` (full audit log) and `corrections.jsonl` (subset for fast scanning by few-shot selection), correction window check with hard cutoff, `type: reorganisation` logging for post-window moves
 - [ ] T079 {opus} [US3] Implement few-shot example selection in `crates/librarian-learning/src/fewshot.rs` — scan corrections.jsonl, filter by source_inbox and filetype, select last N (default 20), format as prompt examples per PRD section 10 Layer A, enforce per-folder isolation
 - [ ] T080 {sonnet} [US3] Implement centroid drift in `crates/librarian-learning/src/centroid.rs` — recalculate bucket centroid when correction recorded, weighted running average, per-folder and per-filetype scoping, persist to `~/.librarian/state/centroids.msgpack`
 - [ ] T081 {sonnet} [US3] Implement filesystem watcher for corrections in `crates/librarian-learning/src/watcher.rs` — `notify` crate, watch destination directories, detect file hash reappearing at new path within correction window, record Watched correction
@@ -188,29 +188,26 @@
 
 ---
 
-## Phase 6: User Story 4 — Plan Management and Safety (Priority: P4)
+## Phase 6: User Story 4 — Move Limits, Managed Trash, and Audit (Priority: P4)
 
-**Goal**: Named plan management, backup-before-aggressive gate, append-only audit, move limit enforcement. Safety guarantees.
+**Goal**: Move limit enforcement, managed `_Trash/` soft-delete, and decision log audit coverage. Backup and aggressive gate are implemented in US1 (T036).
 
-**Independent Test**: Process, review plan, apply with --backup, verify backup directory, rollback, verify full restoration. Test aggressive gate rejection. Test move limit.
+**Independent Test**: Process with >500 files, verify move limit enforced and partial plan saved. Verify soft-delete to `_Trash/`. Audit decision log for completeness across all operation types.
 
 ### Tests for User Story 4
 
-- [ ] T089 [P] {sonnet} [US4] Write unit test for backup logic in `crates/librarian-core/src/plan.rs` — test file copy to `~/.librarian/backup/<plan-id>/`, directory creation, verify backup contents match originals
-- [ ] T090 [P] {sonnet} [US4] Write unit test for aggressive gate in `crates/librarian-core/src/plan.rs` — test rejection when no backup exists for plan, acceptance when backup exists for same plan, rejection for cross-plan backup
-- [ ] T091 [P] {sonnet} [US4] Write unit test for move limit in `crates/librarian-core/src/walker.rs` — test that scan stops proposing after max_moves_per_run (default 500), partial plan saved, limit-reached reported
-- [ ] T092 [P] {sonnet} [US4] Write unit test for decision log completeness in `crates/librarian-core/src/decision.rs` — verify every operation type (Move, Tag, Skip, Collision, Correction, Reorganisation, Ignored) produces a log entry with all required fields
-- [ ] T093 {opus} [US4] Write integration test for backup-apply-rollback safety in `tests/integration/process_apply_rollback.rs` — full cycle with --backup, verify backup directory, apply --aggressive (should succeed), rollback from backup, verify zero data loss
+- [ ] T089 [P] {sonnet} [US4] Write unit test for move limit in `crates/librarian-core/src/walker.rs` — test that scan stops proposing after max_moves_per_run (default 500), partial plan saved, limit-reached reported in PlanStats
+- [ ] T090 [P] {sonnet} [US4] Write unit test for managed `_Trash/` in `crates/librarian-core/src/plan.rs` — test soft-delete moves files to `<destination>/_Trash/<plan-id>/`, preserves relative paths, reversible via rollback, tracked in decision log
+- [ ] T091 [P] {sonnet} [US4] Write unit test for decision log completeness in `crates/librarian-core/src/decision.rs` — verify every operation type (Move, Tag, Skip, Collision, Correction, Reorganisation, Ignored) produces a log entry with all required fields
+- [ ] T092 {opus} [US4] Write integration test for safety guarantees in `tests/integration/process_apply_rollback.rs` — full cycle: process >500 files (verify limit), apply with --backup, apply --aggressive (verify gate from T036), soft-delete to _Trash, rollback from backup, verify zero data loss
 
 ### Implementation for User Story 4
 
-- [ ] T094 {sonnet} [US4] Implement backup logic in `crates/librarian-core/src/plan.rs` — copy originals to `~/.librarian/backup/<plan-id>/` preserving relative paths, record backup_path in Plan struct, verify backup completeness before marking success
-- [ ] T095 {sonnet} [US4] Implement aggressive gate in `crates/librarian-core/src/plan.rs` — check Plan.backup_path is Some and matches current plan ID, refuse with descriptive error if gate fails, only allow if backup succeeded for exact same plan
-- [ ] T096 {sonnet} [US4] Implement move limit enforcement in `crates/librarian-core/src/walker.rs` — count proposed moves during scan, stop after max_moves_per_run, mark plan as partial, include limit-reached in PlanStats
-- [ ] T097 {sonnet} [US4] Implement managed `_Trash/` in `crates/librarian-core/src/plan.rs` — soft-delete moves files to `<destination>/_Trash/<plan-id>/` preserving relative paths, reversible via rollback, tracked in decision log
-- [ ] T098 {sonnet} [US4] Audit decision log coverage across all crates — verify every code path that modifies files, tags, or state writes a Decision entry with all required fields per data model. Add missing log calls if any.
+- [ ] T093 {sonnet} [US4] Implement move limit enforcement in `crates/librarian-core/src/walker.rs` — count proposed moves during scan, stop after max_moves_per_run, mark plan as partial, include limit-reached in PlanStats
+- [ ] T094 {sonnet} [US4] Implement managed `_Trash/` in `crates/librarian-core/src/plan.rs` — soft-delete moves files to `<destination>/_Trash/<plan-id>/` preserving relative paths, reversible via rollback, tracked in decision log
+- [ ] T095 {sonnet} [US4] Audit decision log coverage across all crates — verify every code path that modifies files, tags, or state writes a Decision entry with all required fields per data model. Add missing log calls if any.
 
-**Checkpoint**: User Story 4 functional. All safety guarantees in place: backup, aggressive gate, rollback, move limit, append-only audit, managed trash. Zero data loss possible.
+**Checkpoint**: User Story 4 functional. Move limit, managed trash, and audit coverage in place. Combined with US1 backup/aggressive gate, all safety guarantees are complete.
 
 ---
 
@@ -225,6 +222,7 @@
 - [ ] T103 [P] {haiku} Write example `config.yaml` with all options commented at `examples/config.yaml`
 - [ ] T104 [P] {haiku} Write example `rules.yaml` with common patterns at `examples/rules.yaml`
 - [ ] T105 {sonnet} Validate quickstart.md checklist end-to-end — run through every step in `specs/001-rust-file-organiser-cli/quickstart.md`, fix any issues
+- [ ] T109 {sonnet} Add performance benchmark in `tests/integration/benchmarks.rs` — generate 1,000 fixture files, run full process pipeline, assert wall-clock < 180s (SC-001); run apply+rollback on 500-file plan, assert rollback < 30s (SC-007)
 - [ ] T106 {sonnet} Run `cargo clippy -- -D warnings` and fix all warnings across workspace
 - [ ] T107 {sonnet} Run `cargo test` full suite and verify all tests pass, fix any failures
 - [ ] T108 [P] {haiku} Verify zero `unsafe` blocks outside xattr — audit all crates, document any `unsafe` with comments explaining why it's needed
@@ -248,7 +246,7 @@
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) — No dependencies on other stories. **This is the MVP.**
 - **User Story 2 (P2)**: Depends on US1 plan model and rules engine. Can start after US1 Phase 3 completes.
 - **User Story 3 (P3)**: Depends on US2 classification pipeline. Can start after US2 Phase 4 completes.
-- **User Story 4 (P4)**: Core safety tasks (backup, aggressive gate, move limit) can start after US1. Audit task (T098) requires all stories complete.
+- **User Story 4 (P4)**: Move limit and managed trash can start after US1. Audit task (T095) requires all stories complete. Backup/aggressive gate already in US1 (T036).
 
 ### Within Each User Story
 
@@ -265,8 +263,8 @@
 **Phase 3**: T028–T032 (tests) all parallel; T033–T049 (impl) — T033+T038+T039+T043+T044+T045+T048+T049 parallel, then T034→T035→T036→T037→T040 sequential
 **Phase 4**: T050–T057 (tests) all parallel; T058–T072 (impl) — T058+T064+T069+T071+T072 parallel, then T059→T060→T061→T062→T063 sequential, then T065→T066→T067→T068→T070
 **Phase 5**: T073–T077 (tests) all parallel; T078–T088 (impl) — T078+T080+T081+T082+T088 parallel, then T079→T083→T084 sequential
-**Phase 6**: T089–T093 (tests) all parallel; T094–T098 mostly parallel
-**Phase 7**: T099+T100+T101+T102+T103+T104+T108 parallel, then T105→T106→T107 sequential
+**Phase 6**: T089–T091 (tests) all parallel; T092 (integration); T093–T095 mostly parallel
+**Phase 7**: T099+T100+T101+T102+T103+T104+T108 parallel, then T105→T109→T106→T107 sequential
 
 ---
 
@@ -291,10 +289,10 @@
 
 ### Model Cost Optimisation
 
-For budget-conscious execution, the model breakdown:
+For budget-conscious execution, the model breakdown (106 tasks total):
 - **{haiku}** tasks (19 tasks): ~$low — boilerplate, config, re-exports
 - **{sonnet}** tasks (63 tasks): ~$moderate — standard implementation with clear patterns
-- **{opus}** tasks (26 tasks): ~$higher — architectural decisions, multi-concern orchestration, complex algorithms
+- **{opus}** tasks (24 tasks): ~$higher — architectural decisions, multi-concern orchestration, complex algorithms
 
 Run {haiku} tasks first to scaffold structure, then {sonnet} for bulk implementation, reserving {opus} for critical architectural tasks.
 

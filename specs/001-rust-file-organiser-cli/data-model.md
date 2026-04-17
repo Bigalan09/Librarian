@@ -246,7 +246,6 @@ Bucket ──N:1──> InboxFolder (learning isolation scope)
 ├── backup/
 │   └── <plan-id>/        # Original files before aggressive moves
 ├── state/
-│   ├── manifest.json     # Current known state of managed folders
 │   └── centroids.msgpack # HashMap<(inbox, filetype, bucket), Vec<f32>>
 └── logs/
     └── librarian.log     # Tracing output (rotated)
