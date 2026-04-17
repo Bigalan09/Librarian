@@ -41,10 +41,7 @@ pub async fn embed_batch<P: Provider>(
 }
 
 /// Embed a single text using a dyn-compatible ErasedProvider.
-pub async fn embed_text_dyn(
-    provider: &dyn ErasedProvider,
-    text: &str,
-) -> anyhow::Result<Vec<f32>> {
+pub async fn embed_text_dyn(provider: &dyn ErasedProvider, text: &str) -> anyhow::Result<Vec<f32>> {
     let mut results = provider.embed(vec![text.to_string()]).await?;
     results
         .pop()

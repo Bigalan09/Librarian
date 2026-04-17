@@ -10,5 +10,5 @@ pub use cache::EmbeddingCache;
 pub use lmstudio::LmStudio;
 pub use openai::OpenAi;
 pub use router::{ErasedProvider, ProviderRouter};
-pub use sse::{parse_sse_line, SseEvent};
+pub use sse::{SseEvent, parse_sse_line};
 pub use traits::{ChatMessage, ChatResponse, ModelInfo, Provider};

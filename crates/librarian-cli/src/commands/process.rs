@@ -2,12 +2,12 @@
 
 use std::path::PathBuf;
 
+use librarian_core::IgnoreEngine;
 use librarian_core::config::{self, ProviderType};
 use librarian_core::decision::ClassificationMethod;
 use librarian_core::file_entry::FinderColour;
-use librarian_core::plan::{ActionType, Plan, PlannedAction, PlanStats};
+use librarian_core::plan::{ActionType, Plan, PlanStats, PlannedAction};
 use librarian_core::walker;
-use librarian_core::IgnoreEngine;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
@@ -23,6 +23,24 @@ pub async fn run(
     _rename: bool,
 ) -> anyhow::Result<()> {
     let mut cfg = config::load_default()?;
+
+    // Validate config
+    match config::validate(&cfg) {
+        Ok(warnings) => {
+            for w in &warnings {
+                tracing::warn!("{w}");
+            }
+        }
+        Err(errors) => {
+            for e in &errors {
+                tracing::error!("{e}");
+            }
+            anyhow::bail!(
+                "Configuration has {} error(s). Fix config.yaml and retry.",
+                errors.len()
+            );
+        }
+    }
 
     // Apply CLI overrides to config
     if let Some(p) = &provider {
@@ -61,7 +79,7 @@ pub async fn run(
     let ai_provider = if provider.is_some() {
         match librarian_providers::router::ProviderRouter::new(&cfg.provider).await {
             Ok(router) => {
-                tracing::info!("AI provider connected: {}", router.active().name());
+                tracing::info!("AI provider connected: {}", router.active()?.name());
                 Some(router)
             }
             Err(e) => {
@@ -74,12 +92,15 @@ pub async fn run(
     };
 
     // Load embedding cache
-    let cache_path = config::librarian_home().join("cache").join("embeddings.msgpack");
-    let embed_cache = librarian_providers::cache::EmbeddingCache::load(&cache_path)
-        .unwrap_or_default();
+    let cache_path = config::librarian_home()
+        .join("cache")
+        .join("embeddings.msgpack");
+    let embed_cache =
+        librarian_providers::cache::EmbeddingCache::load(&cache_path).unwrap_or_default();
 
     // Scan each source folder
     let mut all_entries = Vec::new();
+    let scan_start = std::time::Instant::now();
     for src in &sources {
         if !src.exists() {
             tracing::warn!("source folder does not exist: {}", src.display());
@@ -98,14 +119,23 @@ pub async fn run(
             cfg.max_moves_per_run as usize,
         )
         .await?;
+
+        let hash_start = std::time::Instant::now();
         walker::hash_entries(&mut entries).await?;
+        tracing::debug!(
+            elapsed_ms = hash_start.elapsed().as_millis() as u64,
+            count = entries.len(),
+            "hashed files",
+        );
+
         all_entries.extend(entries);
     }
 
     tracing::info!(
-        "scanned {} file(s) from {} source(s)",
-        all_entries.len(),
-        sources.len()
+        elapsed_ms = scan_start.elapsed().as_millis() as u64,
+        files = all_entries.len(),
+        sources = sources.len(),
+        "scan complete",
     );
 
     // Build plan name
@@ -126,6 +156,7 @@ pub async fn run(
     let gate = librarian_classifier::ConfidenceGate::new(cfg.thresholds.clone());
 
     // Classify each file
+    let classify_start = std::time::Instant::now();
     for entry in &all_entries {
         // Step 1: Rules (deterministic, always first)
         if let Some(rule) = engine.evaluate(entry) {
@@ -152,14 +183,11 @@ pub async fn run(
 
         // Step 2-5: AI classification (if provider available)
         if let Some(ref router) = ai_provider {
-            let provider = router.active();
+            let provider = router.active()?;
 
             // Step 2: Filename embedding
-            let _filename_result = librarian_classifier::embedding::embed_text_dyn(
-                provider,
-                &entry.name,
-            )
-            .await;
+            let _filename_result =
+                librarian_classifier::embedding::embed_text_dyn(provider, &entry.name).await;
 
             // TODO: compare against bucket centroids from Qdrant
             // For now, fall through to LLM classifier
@@ -175,14 +203,11 @@ pub async fn run(
 
             match llm_result {
                 Ok(result) => {
-                    let gate_result = gate.check_llm_confidence(
-                        result.confidence,
-                        &result.destination,
-                    );
+                    let gate_result =
+                        gate.check_llm_confidence(result.confidence, &result.destination);
                     match gate_result {
                         librarian_classifier::GateResult::Accept { destination, .. } => {
-                            let destination_path =
-                                dest_root.join(&destination).join(&entry.name);
+                            let destination_path = dest_root.join(&destination).join(&entry.name);
                             plan.actions.push(PlannedAction {
                                 file_hash: entry.hash.clone(),
                                 source_path: entry.path.clone(),
@@ -199,8 +224,7 @@ pub async fn run(
                             stats.ai_classified += 1;
                         }
                         librarian_classifier::GateResult::NeedsReview { reason } => {
-                            let destination_path =
-                                cfg.needs_review_path.join(&entry.name);
+                            let destination_path = cfg.needs_review_path.join(&entry.name);
                             plan.actions.push(PlannedAction {
                                 file_hash: entry.hash.clone(),
                                 source_path: entry.path.clone(),
@@ -259,6 +283,14 @@ pub async fn run(
         }
     }
 
+    tracing::info!(
+        elapsed_ms = classify_start.elapsed().as_millis() as u64,
+        rule_matched = stats.rule_matched,
+        ai_classified = stats.ai_classified,
+        needs_review = stats.needs_review,
+        "classification complete",
+    );
+
     // Save embedding cache
     if let Err(e) = embed_cache.save(&cache_path) {
         tracing::warn!("failed to save embedding cache: {e}");
@@ -276,7 +308,10 @@ pub async fn run(
     println!("-------");
     println!("Matched rules        {:>5}", plan.stats.rule_matched);
     println!("AI classified        {:>5}", plan.stats.ai_classified);
-    println!("Low confidence       {:>5}  -> NeedsReview", plan.stats.needs_review);
+    println!(
+        "Low confidence       {:>5}  -> NeedsReview",
+        plan.stats.needs_review
+    );
     println!("Skipped (no match)   {:>5}", plan.stats.skipped);
     println!("Total files          {:>5}", plan.stats.total_files);
     println!();

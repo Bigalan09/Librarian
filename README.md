@@ -147,11 +147,14 @@ thresholds:
 | `status` | Show plans, recent runs, pending reviews |
 | `plans show <name>` | Inspect a plan |
 | `plans delete <name>` | Delete a plan |
+| `plans clean --days 30` | Remove plans older than N days |
 | `rules validate` | Check your rules.yaml for errors |
 | `rules suggest` | Suggest new rules from correction history |
 | `correct <file> --to <path>` | Record a manual correction |
+| `watch` | Watch destination for manual corrections (passive learning) |
 | `review` | Walk through files that need human review |
 | `config show` | Print current config |
+| `completions <shell>` | Generate shell completions (bash, zsh, fish) |
 
 ## Providers
 

@@ -16,6 +16,7 @@ librarian-learning.workspace = true
 blake3.workspace = true
 chrono.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 tokio.workspace = true
 indicatif.workspace = true
 tracing.workspace = true

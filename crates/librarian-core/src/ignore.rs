@@ -112,9 +112,10 @@ impl IgnoreEngine {
 
         // Tier 3 ---------------------------------------------------------------
         if let Some(gi) = &self.global
-            && gi.matched(&canonical, is_dir).is_ignore() {
-                return true;
-            }
+            && gi.matched(&canonical, is_dir).is_ignore()
+        {
+            return true;
+        }
 
         false
     }
@@ -183,9 +184,7 @@ fn is_system_ignored(path: &Path) -> bool {
 
 /// Walk `source_dir` recursively and build a `Gitignore` matcher for every
 /// directory that contains a `.librarianignore` file.
-fn collect_local_ignores(
-    source_dir: &Path,
-) -> anyhow::Result<HashMap<PathBuf, Gitignore>> {
+fn collect_local_ignores(source_dir: &Path) -> anyhow::Result<HashMap<PathBuf, Gitignore>> {
     let mut map = HashMap::new();
     collect_local_ignores_recursive(source_dir, &mut map)?;
     Ok(map)
@@ -299,7 +298,10 @@ mod tests {
         fs::write(&regular, b"data").unwrap();
 
         let eng = engine(tmp.path());
-        assert!(!eng.is_ignored(&regular), "regular files must not be ignored");
+        assert!(
+            !eng.is_ignored(&regular),
+            "regular files must not be ignored"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -322,7 +324,10 @@ mod tests {
 
         let eng = IgnoreEngine::new(tmp.path(), Some(Path::new("/nonexistent/ignore"))).unwrap();
 
-        assert!(eng.is_ignored(&log_file), "*.log should be ignored by .librarianignore");
+        assert!(
+            eng.is_ignored(&log_file),
+            "*.log should be ignored by .librarianignore"
+        );
         assert!(!eng.is_ignored(&txt_file), ".txt should not be ignored");
     }
 
@@ -344,8 +349,14 @@ mod tests {
 
         let eng = IgnoreEngine::new(tmp.path(), Some(Path::new("/nonexistent/ignore"))).unwrap();
 
-        assert!(eng.is_ignored(&ignored), "file inside subdir should match subdir rule");
-        assert!(!eng.is_ignored(&not_ignored), "file outside subdir should not match subdir rule");
+        assert!(
+            eng.is_ignored(&ignored),
+            "file inside subdir should match subdir rule"
+        );
+        assert!(
+            !eng.is_ignored(&not_ignored),
+            "file outside subdir should not match subdir rule"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -371,8 +382,14 @@ mod tests {
 
         let eng = IgnoreEngine::new(&source, Some(global_file.as_path())).unwrap();
 
-        assert!(eng.is_ignored(&bak_file), "*.bak should be ignored by global ignore");
-        assert!(!eng.is_ignored(&txt_file), ".txt should not be ignored by global rule");
+        assert!(
+            eng.is_ignored(&bak_file),
+            "*.bak should be ignored by global ignore"
+        );
+        assert!(
+            !eng.is_ignored(&txt_file),
+            ".txt should not be ignored by global rule"
+        );
     }
 
     // -----------------------------------------------------------------------

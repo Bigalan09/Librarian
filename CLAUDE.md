@@ -5,10 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-cargo test                    # Run all tests
+cargo test --all              # Run all tests (unit + integration)
 cargo test -p librarian-core  # Test a single crate
 cargo test plan::tests        # Run tests matching a path
-cargo clippy                  # Lint
+cargo clippy --all-targets    # Lint (CI runs with -D warnings)
+cargo fmt --all -- --check    # Check formatting
 cargo build --release         # Release build
 ```
 

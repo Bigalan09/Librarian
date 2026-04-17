@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::corrections::{read_corrections, Correction};
+use crate::corrections::{Correction, read_corrections};
 
 /// Select few-shot prompt examples from correction history.
 ///
@@ -28,7 +28,7 @@ pub fn select_examples(
         .collect();
 
     // Sort by timestamp descending, take last N (most recent)
-    filtered.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    filtered.sort_by_key(|c| c.timestamp);
 
     let selected: Vec<&Correction> = if filtered.len() > max_count {
         filtered[filtered.len() - max_count..].to_vec()
@@ -59,7 +59,7 @@ pub fn select_examples(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::corrections::{record_correction, Correction, CorrectionSource};
+    use crate::corrections::{Correction, CorrectionSource, record_correction};
     use chrono::{Duration, Utc};
     use std::path::PathBuf;
 
@@ -87,10 +87,34 @@ mod tests {
         let decisions_path = dir.join("decisions.jsonl");
 
         let corrections = vec![
-            make_correction("Downloads", Some("pdf"), "/managed/Work/a.pdf", "/managed/Personal/a.pdf", 5),
-            make_correction("Downloads", Some("pdf"), "/managed/Work/b.pdf", "/managed/Personal/b.pdf", 3),
-            make_correction("Downloads", Some("txt"), "/managed/Work/c.txt", "/managed/Docs/c.txt", 2),
-            make_correction("Desktop", Some("pdf"), "/managed/Work/d.pdf", "/managed/Archive/d.pdf", 1),
+            make_correction(
+                "Downloads",
+                Some("pdf"),
+                "/managed/Work/a.pdf",
+                "/managed/Personal/a.pdf",
+                5,
+            ),
+            make_correction(
+                "Downloads",
+                Some("pdf"),
+                "/managed/Work/b.pdf",
+                "/managed/Personal/b.pdf",
+                3,
+            ),
+            make_correction(
+                "Downloads",
+                Some("txt"),
+                "/managed/Work/c.txt",
+                "/managed/Docs/c.txt",
+                2,
+            ),
+            make_correction(
+                "Desktop",
+                Some("pdf"),
+                "/managed/Work/d.pdf",
+                "/managed/Archive/d.pdf",
+                1,
+            ),
         ];
 
         for c in &corrections {

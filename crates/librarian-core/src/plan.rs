@@ -6,13 +6,13 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::decision::{
-    append_decision, ClassificationMethod, Decision, DecisionOutcome, DecisionType,
+    ClassificationMethod, Decision, DecisionOutcome, DecisionType, append_decision,
 };
 use crate::file_entry::FinderColour;
 
@@ -153,8 +153,12 @@ impl Plan {
 
     /// Create a new Draft plan with no actions.
     pub fn new(name: &str, source_folders: Vec<PathBuf>, destination_root: PathBuf) -> Self {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+
         let now = Utc::now();
-        let id = format!("{}", now.format("%Y%m%d-%H%M%S-%3f"));
+        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = format!("{}-{:04}", now.format("%Y%m%d-%H%M%S-%3f"), seq);
         Self {
             id,
             name: name.to_owned(),
@@ -186,8 +190,7 @@ impl Plan {
         std::fs::create_dir_all(plans_dir)
             .with_context(|| format!("creating plans directory {}", plans_dir.display()))?;
         let path = plans_dir.join(format!("{}.json", self.id));
-        let json =
-            serde_json::to_string_pretty(self).context("serialising plan to JSON")?;
+        let json = serde_json::to_string_pretty(self).context("serialising plan to JSON")?;
         std::fs::write(&path, json)
             .with_context(|| format!("writing plan to {}", path.display()))?;
         Ok(())
@@ -197,8 +200,8 @@ impl Plan {
     pub fn load(path: &Path) -> Result<Plan> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("reading plan from {}", path.display()))?;
-        let plan: Plan =
-            serde_json::from_str(&content).with_context(|| format!("parsing plan {}", path.display()))?;
+        let plan: Plan = serde_json::from_str(&content)
+            .with_context(|| format!("parsing plan {}", path.display()))?;
         Ok(plan)
     }
 
@@ -223,7 +226,7 @@ impl Plan {
             }
         }
         // Sort by creation time, newest first.
-        plans.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        plans.sort_by_key(|p| std::cmp::Reverse(p.created_at));
         Ok(plans)
     }
 
@@ -282,18 +285,16 @@ impl Plan {
     ///
     /// When `aggressive` is true the plan must have a backup — returns an error
     /// if `self.backup_path` is `None`.
-    pub fn apply(
-        &mut self,
-        decision_log_path: &Path,
-        aggressive: bool,
-    ) -> Result<ApplyReport> {
+    pub fn apply(&mut self, decision_log_path: &Path, aggressive: bool) -> Result<ApplyReport> {
         if self.status != PlanStatus::Draft {
-            bail!("plan {} is not in Draft status (current: {:?})", self.id, self.status);
+            bail!(
+                "plan {} is not in Draft status (current: {:?})",
+                self.id,
+                self.status
+            );
         }
         if aggressive && self.backup_path.is_none() {
-            bail!(
-                "aggressive mode requires a backup — call plan.backup() before apply"
-            );
+            bail!("aggressive mode requires a backup — call plan.backup() before apply");
         }
 
         let mut report = ApplyReport::default();
@@ -363,16 +364,13 @@ impl Plan {
 
                     // Create destination directories.
                     if let Some(parent) = action.destination_path.parent()
-                        && let Err(e) = std::fs::create_dir_all(parent) {
-                            let msg = format!(
-                                "failed to create directory {}: {}",
-                                parent.display(),
-                                e
-                            );
-                            report.errors.push(msg.clone());
-                            report.skipped += 1;
-                            continue;
-                        }
+                        && let Err(e) = std::fs::create_dir_all(parent)
+                    {
+                        let msg = format!("failed to create directory {}: {}", parent.display(), e);
+                        report.errors.push(msg.clone());
+                        report.skipped += 1;
+                        continue;
+                    }
 
                     // Move the file.
                     if action.source_path.exists() {
@@ -403,21 +401,20 @@ impl Plan {
                     if !action.tags.is_empty()
                         && let Err(e) =
                             crate::tags::write_tags(&action.destination_path, &action.tags)
-                        {
-                            warn!("failed to tag {}: {}", action.destination_path.display(), e);
-                        }
+                    {
+                        warn!("failed to tag {}: {}", action.destination_path.display(), e);
+                    }
 
                     // Apply colour.
                     if let Some(colour) = action.colour
-                        && let Err(e) =
-                            crate::tags::write_colour(&action.destination_path, colour)
-                        {
-                            warn!(
-                                "failed to set colour on {}: {}",
-                                action.destination_path.display(),
-                                e
-                            );
-                        }
+                        && let Err(e) = crate::tags::write_colour(&action.destination_path, colour)
+                    {
+                        warn!(
+                            "failed to set colour on {}: {}",
+                            action.destination_path.display(),
+                            e
+                        );
+                    }
 
                     // Handle rename (save original name).
                     if let Some(ref rename) = action.rename_to {
@@ -426,10 +423,8 @@ impl Plan {
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
-                        let _ = crate::tags::save_original_name(
-                            &action.destination_path,
-                            &original,
-                        );
+                        let _ =
+                            crate::tags::save_original_name(&action.destination_path, &original);
                         info!("renamed {} -> {}", original, rename);
                     }
 
@@ -438,10 +433,7 @@ impl Plan {
                         DecisionType::Move,
                         &action.file_hash,
                         action.source_path.clone(),
-                        &format!(
-                            "moved to {}",
-                            action.destination_path.display()
-                        ),
+                        &format!("moved to {}", action.destination_path.display()),
                         DecisionOutcome::Success,
                     );
                     let _ = append_decision(decision_log_path, &decision);
@@ -449,22 +441,17 @@ impl Plan {
 
                 ActionType::Tag => {
                     // Tag only — no file move.
-                    if action.source_path.exists() && !action.tags.is_empty()
-                        && let Err(e) =
-                            crate::tags::write_tags(&action.source_path, &action.tags)
-                        {
-                            let msg = format!(
-                                "failed to tag {}: {}",
-                                action.source_path.display(),
-                                e
-                            );
-                            report.errors.push(msg);
-                            report.skipped += 1;
-                            continue;
-                        }
+                    if action.source_path.exists()
+                        && !action.tags.is_empty()
+                        && let Err(e) = crate::tags::write_tags(&action.source_path, &action.tags)
+                    {
+                        let msg = format!("failed to tag {}: {}", action.source_path.display(), e);
+                        report.errors.push(msg);
+                        report.skipped += 1;
+                        continue;
+                    }
                     if let Some(colour) = action.colour {
-                        let _ =
-                            crate::tags::write_colour(&action.source_path, colour);
+                        let _ = crate::tags::write_colour(&action.source_path, colour);
                     }
                     report.tagged += 1;
                     let decision = Decision::new(
@@ -508,10 +495,7 @@ impl Plan {
                         DecisionType::Rename,
                         &action.file_hash,
                         action.source_path.clone(),
-                        &format!(
-                            "renamed to {}",
-                            action.destination_path.display()
-                        ),
+                        &format!("renamed to {}", action.destination_path.display()),
                         DecisionOutcome::Success,
                     );
                     let _ = append_decision(decision_log_path, &decision);
@@ -544,21 +528,18 @@ impl Plan {
         trash_dir: &Path,
         decision_log_path: &Path,
     ) -> Result<PathBuf> {
-        let rel = file_path
-            .strip_prefix(source_root)
-            .unwrap_or_else(|_| {
-                file_path
-                    .file_name()
-                    .map(Path::new)
-                    .unwrap_or(Path::new("unknown"))
-            });
+        let rel = file_path.strip_prefix(source_root).unwrap_or_else(|_| {
+            file_path
+                .file_name()
+                .map(Path::new)
+                .unwrap_or(Path::new("unknown"))
+        });
 
         let trash_dest = trash_dir.join(&self.id).join(rel);
 
         if let Some(parent) = trash_dest.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("creating trash directory {}", parent.display())
-            })?;
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating trash directory {}", parent.display()))?;
         }
 
         std::fs::rename(file_path, &trash_dest).with_context(|| {
@@ -671,25 +652,23 @@ impl Plan {
                 }
 
                 match action.action_type {
-                    ActionType::Move | ActionType::NeedsReview | ActionType::Rename => {
-                        if action.destination_path.exists() {
-                            if let Some(parent) = action.source_path.parent() {
-                                let _ = std::fs::create_dir_all(parent);
-                            }
-                            std::fs::rename(&action.destination_path, &action.source_path)
-                                .with_context(|| {
-                                    format!(
-                                        "rollback move {} -> {}",
-                                        action.destination_path.display(),
-                                        action.source_path.display()
-                                    )
-                                })?;
+                    ActionType::Move | ActionType::NeedsReview | ActionType::Rename
+                        if action.destination_path.exists() =>
+                    {
+                        if let Some(parent) = action.source_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
                         }
+                        std::fs::rename(&action.destination_path, &action.source_path)
+                            .with_context(|| {
+                                format!(
+                                    "rollback move {} -> {}",
+                                    action.destination_path.display(),
+                                    action.source_path.display()
+                                )
+                            })?;
                     }
-                    ActionType::Tag => {
-                        if action.source_path.exists() {
-                            let _ = crate::tags::remove_tags(&action.source_path);
-                        }
+                    ActionType::Tag if action.source_path.exists() => {
+                        let _ = crate::tags::remove_tags(&action.source_path);
                     }
                     _ => {}
                 }
@@ -776,12 +755,13 @@ pub fn clean_junk_filename(name: &str) -> Option<String> {
 
     // scan_NNNN.ext pattern.
     if let Some(rest) = name.strip_prefix("scan_")
-        && let Some(dot_pos) = rest.find('.') {
-            let digits = &rest[..dot_pos];
-            if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
-                return Some(format!("scan-{}", rest));
-            }
+        && let Some(dot_pos) = rest.find('.')
+    {
+        let digits = &rest[..dot_pos];
+        if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+            return Some(format!("scan-{}", rest));
         }
+    }
 
     None
 }
@@ -818,11 +798,7 @@ mod tests {
     use tempfile::tempdir;
 
     // Helper to build a simple action for testing.
-    fn make_action(
-        source: PathBuf,
-        dest: PathBuf,
-        action_type: ActionType,
-    ) -> PlannedAction {
+    fn make_action(source: PathBuf, dest: PathBuf, action_type: ActionType) -> PlannedAction {
         PlannedAction {
             file_hash: "testhash".to_owned(),
             source_path: source,
@@ -903,11 +879,7 @@ mod tests {
         let file = src.join("test.txt");
         std::fs::write(&file, b"hello").unwrap();
 
-        let mut plan = Plan::new(
-            "status-test",
-            vec![src.clone()],
-            dest.clone(),
-        );
+        let mut plan = Plan::new("status-test", vec![src.clone()], dest.clone());
         plan.actions.push(make_action(
             file.clone(),
             dest.join("test.txt"),
@@ -929,11 +901,7 @@ mod tests {
     #[test]
     fn plan_stats_calculation() {
         let actions = vec![
-            make_action(
-                PathBuf::from("/a"),
-                PathBuf::from("/b"),
-                ActionType::Move,
-            ),
+            make_action(PathBuf::from("/a"), PathBuf::from("/b"), ActionType::Move),
             make_action(
                 PathBuf::from("/c"),
                 PathBuf::from("/d"),
@@ -944,11 +912,7 @@ mod tests {
                 classification_method: ClassificationMethod::Llm,
                 ..make_action(PathBuf::from("/e"), PathBuf::from("/f"), ActionType::Move)
             },
-            make_action(
-                PathBuf::from("/g"),
-                PathBuf::from("/h"),
-                ActionType::Skip,
-            ),
+            make_action(PathBuf::from("/g"), PathBuf::from("/h"), ActionType::Skip),
             make_action(
                 PathBuf::from("/i"),
                 PathBuf::from("/j"),
@@ -1013,10 +977,7 @@ mod tests {
         let root = Path::new("/archive");
         assert_eq!(depth_from_root(Path::new("/archive/file.txt"), root), 0);
         assert_eq!(depth_from_root(Path::new("/archive/a/file.txt"), root), 1);
-        assert_eq!(
-            depth_from_root(Path::new("/archive/a/b/file.txt"), root),
-            2
-        );
+        assert_eq!(depth_from_root(Path::new("/archive/a/b/file.txt"), root), 2);
         assert_eq!(
             depth_from_root(Path::new("/archive/a/b/c/file.txt"), root),
             3
@@ -1189,11 +1150,7 @@ mod tests {
         let file = src.join("important.pdf");
         std::fs::write(&file, b"critical data").unwrap();
 
-        let mut plan = Plan::new(
-            "backup-test",
-            vec![src.clone()],
-            dir.path().join("dest"),
-        );
+        let mut plan = Plan::new("backup-test", vec![src.clone()], dir.path().join("dest"));
         plan.actions.push(make_action(
             file.clone(),
             dir.path().join("dest/important.pdf"),
@@ -1227,10 +1184,7 @@ mod tests {
 
         let result = plan.apply(&log, true);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("backup"));
+        assert!(result.unwrap_err().to_string().contains("backup"));
     }
 
     // ----- List plans ------------------------------------------------------
@@ -1271,7 +1225,11 @@ mod tests {
         std::fs::write(&file, b"sensitive data").unwrap();
         assert!(file.exists());
 
-        let plan = Plan::new("trash-test", vec![source_root.clone()], dir.path().join("dest"));
+        let plan = Plan::new(
+            "trash-test",
+            vec![source_root.clone()],
+            dir.path().join("dest"),
+        );
 
         let trash_path = plan
             .soft_delete(&file, &source_root, &trash_dir, &log)
@@ -1292,10 +1250,10 @@ mod tests {
 
         // Restore: move back from trash to original location.
         std::fs::rename(&trash_path, &file).unwrap();
-        assert!(file.exists(), "file should be restored to original location");
-        assert_eq!(
-            std::fs::read_to_string(&file).unwrap(),
-            "sensitive data"
+        assert!(
+            file.exists(),
+            "file should be restored to original location"
         );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "sensitive data");
     }
 }

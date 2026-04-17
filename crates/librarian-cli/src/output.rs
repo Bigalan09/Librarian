@@ -2,7 +2,7 @@
 
 use indicatif::{ProgressBar, ProgressStyle};
 use librarian_core::plan::PlanStats;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 pub fn init_tracing(verbose: bool, json: bool, quiet: bool) -> anyhow::Result<()> {
     let filter = if verbose {
@@ -20,10 +20,7 @@ pub fn init_tracing(verbose: bool, json: bool, quiet: bool) -> anyhow::Result<()
             .with_target(false)
             .init();
     } else {
-        fmt()
-            .with_env_filter(filter)
-            .with_target(false)
-            .init();
+        fmt().with_env_filter(filter).with_target(false).init();
     }
 
     Ok(())

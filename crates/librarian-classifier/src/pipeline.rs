@@ -94,24 +94,29 @@ impl ClassificationPipeline {
         if !existing_buckets.is_empty()
             && let Ok(result) =
                 try_filename_embedding(entry, provider, gate, cache, existing_buckets).await
-                && let Some(r) = result {
-                    return r;
-                }
+            && let Some(r) = result
+        {
+            return r;
+        }
 
         // --- Tier 3: Content embedding (text files only) ---
         let is_text = matches!(
             entry.extension.as_deref(),
             Some("txt" | "md" | "csv" | "pdf")
         );
-        if is_text && !existing_buckets.is_empty()
+        if is_text
+            && !existing_buckets.is_empty()
             && let Ok(result) =
                 try_content_embedding(entry, provider, gate, cache, existing_buckets).await
-                && let Some(r) = result {
-                    return r;
-                }
+            && let Some(r) = result
+        {
+            return r;
+        }
 
         // --- Tier 4: LLM classifier ---
-        match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples).await {
+        match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples)
+            .await
+        {
             Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
             Err(e) => {
                 debug!(file = %entry.name, error = %e, "LLM classification failed");
@@ -332,7 +337,7 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use librarian_providers::traits::{ChatMessage, ChatResponse, ModelInfo, Provider};
-    use librarian_rules::loader::{load_rules_from_str, RuleSet};
+    use librarian_rules::loader::{RuleSet, load_rules_from_str};
     use std::path::PathBuf;
 
     /// A mock provider for testing the pipeline.
@@ -353,35 +358,27 @@ mod tests {
     }
 
     impl Provider for MockProvider {
-        fn validate(&self) -> impl std::future::Future<Output = anyhow::Result<ModelInfo>> + Send {
-            async {
-                Ok(ModelInfo {
-                    id: "mock-model".to_string(),
-                })
-            }
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: "mock-model".to_string(),
+            })
         }
 
-        fn chat(
+        async fn chat(
             &self,
             _messages: Vec<ChatMessage>,
             _temperature: f64,
             _max_tokens: u32,
-        ) -> impl std::future::Future<Output = anyhow::Result<ChatResponse>> + Send {
-            let content = self.chat_response.clone();
-            async move {
-                Ok(ChatResponse {
-                    content,
-                    model: "mock-model".to_string(),
-                })
-            }
+        ) -> anyhow::Result<ChatResponse> {
+            Ok(ChatResponse {
+                content: self.chat_response.clone(),
+                model: "mock-model".to_string(),
+            })
         }
 
-        fn embed(
-            &self,
-            texts: Vec<String>,
-        ) -> impl std::future::Future<Output = anyhow::Result<Vec<Vec<f32>>>> + Send {
+        async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
             let emb = self.embedding.clone();
-            async move { Ok(texts.iter().map(|_| emb.clone()).collect()) }
+            Ok(texts.iter().map(|_| emb.clone()).collect())
         }
 
         fn name(&self) -> &str {
@@ -405,9 +402,7 @@ mod tests {
     }
 
     fn empty_engine() -> RuleEngine {
-        RuleEngine::new(RuleSet {
-            rules: Vec::new(),
-        })
+        RuleEngine::new(RuleSet { rules: Vec::new() })
     }
 
     #[tokio::test]
@@ -477,7 +472,8 @@ rules:
     async fn needs_review_when_llm_confidence_low() {
         let engine = empty_engine();
         let gate = ConfidenceGate::new(Default::default());
-        let chat_response = r#"{"destination": "Unknown", "confidence": 0.30, "tags": [], "reason": "Not sure"}"#;
+        let chat_response =
+            r#"{"destination": "Unknown", "confidence": 0.30, "tags": [], "reason": "Not sure"}"#;
         // Use zero vector so embedding similarity is 0, forcing escalation to LLM
         let provider = MockProvider::new(vec![0.0, 0.0, 0.0], chat_response);
         let mut cache = EmbeddingCache::new();
@@ -501,7 +497,8 @@ rules:
     async fn embedding_cache_is_populated() {
         let engine = empty_engine();
         let gate = ConfidenceGate::new(Default::default());
-        let chat_response = r#"{"destination": "Docs", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
+        let chat_response =
+            r#"{"destination": "Docs", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
         let provider = MockProvider::new(vec![1.0, 0.0], chat_response);
         let mut cache = EmbeddingCache::new();
         let buckets = vec!["Documents".to_string(), "Photos".to_string()];

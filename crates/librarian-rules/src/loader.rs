@@ -233,8 +233,14 @@ rules:
 "#;
         let err = load_rules_from_str(yaml).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("Bad regex"), "error should name the rule: {msg}");
-        assert!(msg.contains("filename"), "error should name the field: {msg}");
+        assert!(
+            msg.contains("Bad regex"),
+            "error should name the rule: {msg}"
+        );
+        assert!(
+            msg.contains("filename"),
+            "error should name the field: {msg}"
+        );
     }
 
     #[test]
@@ -248,7 +254,10 @@ rules:
 "#;
         let err = load_rules_from_str(yaml).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("Bad glob"), "error should name the rule: {msg}");
+        assert!(
+            msg.contains("Bad glob"),
+            "error should name the rule: {msg}"
+        );
     }
 
     #[test]

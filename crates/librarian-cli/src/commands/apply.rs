@@ -10,7 +10,9 @@ pub async fn run(
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let plans_dir = config::librarian_home().join("plans");
-    let decision_log = config::librarian_home().join("history").join("decisions.jsonl");
+    let decision_log = config::librarian_home()
+        .join("history")
+        .join("decisions.jsonl");
 
     let plan_path = if let Some(name) = &plan_name {
         plans_dir.join(format!("{name}.json"))
@@ -97,11 +99,10 @@ fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::Pa
 
     entries.sort_by_key(|e| std::cmp::Reverse(e.metadata().ok().and_then(|m| m.modified().ok())));
 
-    entries
-        .first()
-        .map(|e| e.path())
-        .ok_or_else(|| anyhow::anyhow!(
+    entries.first().map(|e| e.path()).ok_or_else(|| {
+        anyhow::anyhow!(
             "No plans found in {}. Run 'librarian process' to generate a plan first.",
             plans_dir.display()
-        ))
+        )
+    })
 }

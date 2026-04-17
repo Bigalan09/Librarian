@@ -38,10 +38,11 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tokio = { version = "1", features = ["full"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 
 # Progress bars
 indicatif = "0.17"

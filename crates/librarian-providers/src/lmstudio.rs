@@ -23,23 +23,20 @@ impl LmStudio {
     /// - `base_url`: defaults to `http://localhost:1234/v1` if `None`.
     /// - `llm_model`: the model ID for chat completions.
     /// - `embed_model`: the model ID for embeddings.
-    pub fn new(
-        base_url: Option<&str>,
-        llm_model: Option<&str>,
-        embed_model: Option<&str>,
-    ) -> Self {
+    pub fn new(base_url: Option<&str>, llm_model: Option<&str>, embed_model: Option<&str>) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            client: Client::new(),
+            client,
             base_url: base_url
                 .unwrap_or("http://localhost:1234/v1")
                 .trim_end_matches('/')
                 .to_string(),
-            llm_model: llm_model
-                .unwrap_or("default")
-                .to_string(),
-            embed_model: embed_model
-                .unwrap_or("default")
-                .to_string(),
+            llm_model: llm_model.unwrap_or("default").to_string(),
+            embed_model: embed_model.unwrap_or("default").to_string(),
         }
     }
 
@@ -180,7 +177,11 @@ impl Provider for LmStudio {
         }
 
         let embedding_resp: EmbeddingResponse = resp.json().await?;
-        Ok(embedding_resp.data.into_iter().map(|d| d.embedding).collect())
+        Ok(embedding_resp
+            .data
+            .into_iter()
+            .map(|d| d.embedding)
+            .collect())
     }
 
     fn name(&self) -> &str {
@@ -286,11 +287,7 @@ mod tests {
     #[tokio::test]
     async fn connection_refused_error() {
         // Use an address that should refuse connections.
-        let provider = LmStudio::new(
-            Some("http://127.0.0.1:1"),
-            Some("model"),
-            Some("embed"),
-        );
+        let provider = LmStudio::new(Some("http://127.0.0.1:1"), Some("model"), Some("embed"));
         let result = provider.validate().await;
         assert!(result.is_err());
     }

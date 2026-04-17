@@ -8,7 +8,7 @@ use chrono::Utc;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::corrections::{
-    is_within_correction_window, record_correction, Correction, CorrectionSource,
+    Correction, CorrectionSource, is_within_correction_window, record_correction,
 };
 
 /// Watches destination directories for file moves that might be user corrections.
@@ -75,10 +75,7 @@ impl CorrectionWatcher {
             };
 
             // We care about Create and Modify events (file moved/renamed shows as Create)
-            if !matches!(
-                event.kind,
-                EventKind::Create(_) | EventKind::Modify(_)
-            ) {
+            if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
                 continue;
             }
 
@@ -98,9 +95,8 @@ impl CorrectionWatcher {
                     if original_path != path {
                         let placement_time = Utc::now(); // Approximate; real impl would look up actual placement time
                         if is_within_correction_window(placement_time, correction_window_days) {
-                            let filetype = path
-                                .extension()
-                                .map(|e| e.to_string_lossy().to_lowercase());
+                            let filetype =
+                                path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                             let source_inbox = detect_source_inbox(original_path);
 

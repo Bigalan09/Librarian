@@ -72,9 +72,7 @@ impl FileEntry {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let extension = path
-            .extension()
-            .map(|e| e.to_string_lossy().to_lowercase());
+        let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
         let created_at = metadata
             .created()

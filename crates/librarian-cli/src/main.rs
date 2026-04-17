@@ -1,11 +1,15 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
 #[allow(dead_code)]
 mod output;
 
 #[derive(Parser)]
-#[command(name = "librarian", version, about = "Organise files using rules and AI")]
+#[command(
+    name = "librarian",
+    version,
+    about = "Organise files using rules and AI"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -126,6 +130,9 @@ enum Commands {
         retag: Option<String>,
     },
 
+    /// Watch destination for manual corrections (runs until interrupted)
+    Watch,
+
     /// Interactive review of needs-review folder
     Review,
 
@@ -133,6 +140,13 @@ enum Commands {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -147,6 +161,12 @@ enum PlansAction {
     Delete {
         /// Plan name
         name: String,
+    },
+    /// Remove plans older than N days (default: 30)
+    Clean {
+        /// Max age in days
+        #[arg(long, default_value_t = 30)]
+        days: u32,
     },
 }
 
@@ -221,19 +241,28 @@ async fn main() -> anyhow::Result<()> {
         Commands::Plans { action } => match action {
             Some(PlansAction::Show { name }) => commands::plans::show(&name).await,
             Some(PlansAction::Delete { name }) => commands::plans::delete(&name).await,
+            Some(PlansAction::Clean { days }) => commands::plans::clean(days).await,
             None => commands::plans::list().await,
         },
         Commands::Rules { action } => match action {
             RulesAction::Validate { rules } => commands::rules::validate(rules).await,
             RulesAction::Suggest => commands::rules::suggest().await,
         },
-        Commands::Correct { file, to, retag } => {
-            commands::correct::run(file, to, retag).await
-        }
+        Commands::Correct { file, to, retag } => commands::correct::run(file, to, retag).await,
+        Commands::Watch => commands::watch::run().await,
         Commands::Review => commands::review::run().await,
         Commands::Config { action } => match action {
             ConfigAction::Show => commands::config::show().await,
             ConfigAction::Edit => commands::config::edit().await,
         },
+        Commands::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "librarian",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
     }
 }
