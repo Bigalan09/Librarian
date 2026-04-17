@@ -185,7 +185,7 @@ mod platform {
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Default, Serialize, Deserialize)]
-    struct SidecarMeta {
+    pub(super) struct SidecarMeta {
         #[serde(default)]
         tags: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -250,11 +250,6 @@ mod platform {
         write_sidecar(path, &meta)
     }
 
-    // -----------------------------------------------------------------------
-    // Re-export the SidecarMeta type so tests can inspect it.
-    // -----------------------------------------------------------------------
-    #[cfg(test)]
-    pub(super) use SidecarMeta as _SidecarMeta;
 }
 
 // ---------------------------------------------------------------------------
