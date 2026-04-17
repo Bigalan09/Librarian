@@ -105,16 +105,14 @@ fn matches_path(mc: &MatchCriteria, entry: &FileEntry) -> bool {
 
 /// Size: min_size and max_size bounds.
 fn matches_size(mc: &MatchCriteria, entry: &FileEntry) -> bool {
-    if let Some(min) = mc.min_size {
-        if entry.size_bytes < min {
+    if let Some(min) = mc.min_size
+        && entry.size_bytes < min {
             return false;
         }
-    }
-    if let Some(max) = mc.max_size {
-        if entry.size_bytes > max {
+    if let Some(max) = mc.max_size
+        && entry.size_bytes > max {
             return false;
         }
-    }
     true
 }
 

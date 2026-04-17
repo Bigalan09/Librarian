@@ -1,0 +1,132 @@
+# Librarian — Example Configuration
+#
+# Default location: ~/.librarian/config.yaml
+# All fields are optional; the defaults shown here will be used for any
+# field you omit.
+#
+# After editing, test your configuration with:
+#   librarian config show
+
+# ---------------------------------------------------------------------------
+# Inbox folders
+# ---------------------------------------------------------------------------
+# Directories that Librarian watches for new files.  Every file found in these
+# folders is a candidate for classification and organisation.
+# Default: ~/Downloads and ~/Desktop
+inbox_folders:
+  - ~/Downloads
+  - ~/Desktop
+  # Add more inboxes as needed, e.g.:
+  # - ~/Documents/Unsorted
+
+# ---------------------------------------------------------------------------
+# Destination root
+# ---------------------------------------------------------------------------
+# The top-level directory where organised files are moved to.
+# Librarian creates sub-directories inside this folder based on rule
+# destinations and AI classification results.
+# Default: ~/Library-Managed
+destination_root: ~/Library-Managed
+
+# ---------------------------------------------------------------------------
+# Needs-review path
+# ---------------------------------------------------------------------------
+# Files that Librarian cannot classify with sufficient confidence are moved
+# here so you can review and correct them manually.
+# Default: ~/Library-Managed/NeedsReview
+needs_review_path: ~/Library-Managed/NeedsReview
+
+# ---------------------------------------------------------------------------
+# Trash path
+# ---------------------------------------------------------------------------
+# Internal staging area for files pending deletion (not used by default;
+# reserved for future duplicate-removal features).
+# Default: ~/Library-Managed/_Trash
+trash_path: ~/Library-Managed/_Trash
+
+# ---------------------------------------------------------------------------
+# AI provider
+# ---------------------------------------------------------------------------
+# Controls which LLM and embedding service Librarian talks to.
+provider:
+  # provider_type: lmstudio   — local LM Studio instance (default)
+  # provider_type: openai     — OpenAI-compatible API
+  provider_type: lmstudio
+
+  # Base URL for the OpenAI-compatible API endpoint.
+  # Default: http://localhost:1234/v1  (LM Studio default)
+  base_url: http://localhost:1234/v1
+
+  # API key — required for OpenAI; leave commented out for local providers.
+  # api_key: sk-...
+
+  # Language model to use for classification.
+  # Leave unset to use whichever model is currently loaded in LM Studio,
+  # or set explicitly for OpenAI (e.g. "gpt-4o-mini").
+  # llm_model: gpt-4o-mini
+
+  # Embedding model for semantic similarity search.
+  # Leave unset to use the provider default.
+  # embed_model: text-embedding-3-small
+
+  # Rate limit (requests per minute).  Useful when calling a hosted API.
+  # Unset means no artificial throttling.
+  # rate_limit_rpm: 60
+
+# ---------------------------------------------------------------------------
+# Confidence thresholds
+# ---------------------------------------------------------------------------
+# Librarian classifies each file via up to three layers:
+#   1. Filename embedding  — compares the filename against known categories
+#   2. Content embedding   — compares extracted text content
+#   3. LLM                 — asks the language model directly
+#
+# If a layer's score meets or exceeds the threshold, Librarian accepts the
+# classification and does not proceed to the next (more expensive) layer.
+# Lower values → more files classified, but potentially less accurate.
+# Higher values → more files sent to NeedsReview.
+thresholds:
+  # Cosine similarity required to accept a filename-embedding match.
+  # Default: 0.80
+  filename_embedding: 0.80
+
+  # Cosine similarity required to accept a content-embedding match.
+  # Default: 0.75
+  content_embedding: 0.75
+
+  # Self-reported LLM confidence (0–1) required to accept an LLM decision.
+  # Default: 0.70
+  llm_confidence: 0.70
+
+# ---------------------------------------------------------------------------
+# Correction window
+# ---------------------------------------------------------------------------
+# Number of days after a move during which you can run `librarian correct`
+# to roll back or reassign a file.  Decisions older than this window are
+# considered permanent and are pruned from the correction history.
+# Default: 14
+correction_window_days: 14
+
+# ---------------------------------------------------------------------------
+# Max moves per run
+# ---------------------------------------------------------------------------
+# Hard cap on how many files a single `librarian process` run will move.
+# Prevents runaway batch operations.  Set to 0 for unlimited (not recommended).
+# Default: 500
+max_moves_per_run: 500
+
+# ---------------------------------------------------------------------------
+# Few-shot example count
+# ---------------------------------------------------------------------------
+# Number of past decisions to include as few-shot examples when prompting the
+# LLM.  More examples improve consistency but increase token usage.
+# Default: 20
+fewshot_count: 20
+
+# ---------------------------------------------------------------------------
+# Rule suggestion threshold
+# ---------------------------------------------------------------------------
+# After this many files have been manually corrected to the same destination,
+# Librarian will suggest adding a rule to rules.yaml to automate the pattern.
+# Default: 3
+rule_suggestion_threshold: 3

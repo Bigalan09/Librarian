@@ -14,6 +14,7 @@ use crate::file_entry::FinderColour;
 // Sidecar helpers (shared across platforms for the non-macOS path)
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn sidecar_path(path: &Path) -> PathBuf {
     let parent = path.parent().unwrap_or(Path::new("."));
     parent.join(".librarian-meta.json")

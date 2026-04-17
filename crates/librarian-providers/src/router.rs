@@ -96,6 +96,7 @@ impl ProviderRouter {
 /// This exists because the `Provider` trait uses `impl Future` return types
 /// (RPITIT), which are not object-safe. `ErasedProvider` wraps those into
 /// boxed futures so we can use `&dyn ErasedProvider`.
+#[allow(clippy::type_complexity)]
 pub trait ErasedProvider: Send + Sync {
     fn validate(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<ModelInfo>> + Send + '_>>;
     fn chat(

@@ -24,7 +24,11 @@ pub async fn edit() -> anyhow::Result<()> {
         .status()?;
 
     if !status.success() {
-        anyhow::bail!("Editor '{}' exited with non-zero status", editor);
+        anyhow::bail!(
+            "Editor '{}' exited with a non-zero status — the config may not have been saved. \
+             Set a different editor with the EDITOR environment variable.",
+            editor
+        );
     }
 
     Ok(())

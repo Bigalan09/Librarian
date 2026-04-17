@@ -90,8 +90,10 @@ pub struct PlanStats {
 impl PlanStats {
     /// Recompute stats from a slice of actions.
     pub fn from_actions(actions: &[PlannedAction]) -> Self {
-        let mut stats = Self::default();
-        stats.total_files = actions.len();
+        let mut stats = Self {
+            total_files: actions.len(),
+            ..Self::default()
+        };
         for a in actions {
             match a.action_type {
                 ActionType::Move | ActionType::Tag | ActionType::Rename => {
@@ -360,8 +362,8 @@ impl Plan {
                     }
 
                     // Create destination directories.
-                    if let Some(parent) = action.destination_path.parent() {
-                        if let Err(e) = std::fs::create_dir_all(parent) {
+                    if let Some(parent) = action.destination_path.parent()
+                        && let Err(e) = std::fs::create_dir_all(parent) {
                             let msg = format!(
                                 "failed to create directory {}: {}",
                                 parent.display(),
@@ -371,7 +373,6 @@ impl Plan {
                             report.skipped += 1;
                             continue;
                         }
-                    }
 
                     // Move the file.
                     if action.source_path.exists() {
@@ -399,17 +400,16 @@ impl Plan {
                     }
 
                     // Apply tags.
-                    if !action.tags.is_empty() {
-                        if let Err(e) =
+                    if !action.tags.is_empty()
+                        && let Err(e) =
                             crate::tags::write_tags(&action.destination_path, &action.tags)
                         {
                             warn!("failed to tag {}: {}", action.destination_path.display(), e);
                         }
-                    }
 
                     // Apply colour.
-                    if let Some(colour) = action.colour {
-                        if let Err(e) =
+                    if let Some(colour) = action.colour
+                        && let Err(e) =
                             crate::tags::write_colour(&action.destination_path, colour)
                         {
                             warn!(
@@ -418,7 +418,6 @@ impl Plan {
                                 e
                             );
                         }
-                    }
 
                     // Handle rename (save original name).
                     if let Some(ref rename) = action.rename_to {
@@ -450,8 +449,8 @@ impl Plan {
 
                 ActionType::Tag => {
                     // Tag only — no file move.
-                    if action.source_path.exists() && !action.tags.is_empty() {
-                        if let Err(e) =
+                    if action.source_path.exists() && !action.tags.is_empty()
+                        && let Err(e) =
                             crate::tags::write_tags(&action.source_path, &action.tags)
                         {
                             let msg = format!(
@@ -463,7 +462,6 @@ impl Plan {
                             report.skipped += 1;
                             continue;
                         }
-                    }
                     if let Some(colour) = action.colour {
                         let _ =
                             crate::tags::write_colour(&action.source_path, colour);
@@ -777,14 +775,13 @@ pub fn clean_junk_filename(name: &str) -> Option<String> {
     }
 
     // scan_NNNN.ext pattern.
-    if let Some(rest) = name.strip_prefix("scan_") {
-        if let Some(dot_pos) = rest.find('.') {
+    if let Some(rest) = name.strip_prefix("scan_")
+        && let Some(dot_pos) = rest.find('.') {
             let digits = &rest[..dot_pos];
             if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
                 return Some(format!("scan-{}", rest));
             }
         }
-    }
 
     None
 }

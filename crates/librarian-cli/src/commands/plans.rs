@@ -34,7 +34,11 @@ pub async fn show(name: &str) -> anyhow::Result<()> {
     let plan_path = plans_dir.join(format!("{name}.json"));
 
     if !plan_path.exists() {
-        anyhow::bail!("Plan '{}' not found at {}", name, plan_path.display());
+        anyhow::bail!(
+            "Plan '{}' not found at {}. Run 'librarian plans list' to see available plans.",
+            name,
+            plan_path.display()
+        );
     }
 
     let plan = Plan::load(&plan_path)?;
@@ -78,7 +82,11 @@ pub async fn delete(name: &str) -> anyhow::Result<()> {
     let plan_path = plans_dir.join(format!("{name}.json"));
 
     if !plan_path.exists() {
-        anyhow::bail!("Plan '{}' not found", name);
+        anyhow::bail!(
+            "Plan '{}' not found at {}. Run 'librarian plans list' to see available plans.",
+            name,
+            plan_path.display()
+        );
     }
 
     std::fs::remove_file(&plan_path)?;

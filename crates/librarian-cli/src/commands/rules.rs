@@ -8,7 +8,10 @@ pub async fn validate(rules_path: Option<PathBuf>) -> anyhow::Result<()> {
     let path = rules_path.unwrap_or_else(|| config::librarian_home().join("rules.yaml"));
 
     if !path.exists() {
-        anyhow::bail!("Rules file not found: {}", path.display());
+        anyhow::bail!(
+            "Rules file not found at {}. Run 'librarian init' to create a default rules file.",
+            path.display()
+        );
     }
 
     match librarian_rules::load_rules(&path) {

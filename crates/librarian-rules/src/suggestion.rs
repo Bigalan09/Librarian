@@ -26,9 +26,9 @@ pub struct SuggestedRule {
 
 /// Suggest new rules based on correction patterns.
 ///
-/// Scans corrections for repeated patterns: same `source_inbox` + same `filetype`
-/// + same corrected destination folder. When a pattern appears 3 or more times,
-/// a rule is suggested.
+/// Scans corrections for repeated patterns (same `source_inbox`, same `filetype`,
+/// same corrected destination folder). When a pattern appears 3 or more times a
+/// rule is suggested.
 ///
 /// `existing_rules_yaml` is the content of the current rules file, used to
 /// avoid suggesting duplicates.
@@ -57,7 +57,7 @@ pub fn suggest_rules(
             continue;
         }
 
-        let rule_name = generate_rule_name(&source_inbox, filetype.as_deref(), &dest_folder);
+        let rule_name = generate_rule_name(source_inbox, filetype.as_deref(), dest_folder);
 
         // Check if a similar rule already exists
         if existing_rules_yaml.contains(dest_folder.as_str()) {
@@ -70,7 +70,7 @@ pub fn suggest_rules(
             }
         }
 
-        let yaml = generate_rule_yaml(&rule_name, filetype.as_deref(), &dest_folder);
+        let yaml = generate_rule_yaml(&rule_name, filetype.as_deref(), dest_folder);
 
         suggestions.push(SuggestedRule {
             name: rule_name,

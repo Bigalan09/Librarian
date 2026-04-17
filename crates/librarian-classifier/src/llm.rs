@@ -169,11 +169,10 @@ fn extract_json(raw: &str) -> &str {
         }
     }
     // Try to find { ... } directly
-    if let Some(start) = raw.find('{') {
-        if let Some(end) = raw.rfind('}') {
+    if let Some(start) = raw.find('{')
+        && let Some(end) = raw.rfind('}') {
             return &raw[start..=end];
         }
-    }
     raw.trim()
 }
 

@@ -111,11 +111,10 @@ impl IgnoreEngine {
         }
 
         // Tier 3 ---------------------------------------------------------------
-        if let Some(gi) = &self.global {
-            if gi.matched(&canonical, is_dir).is_ignore() {
+        if let Some(gi) = &self.global
+            && gi.matched(&canonical, is_dir).is_ignore() {
                 return true;
             }
-        }
 
         false
     }

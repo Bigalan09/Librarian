@@ -20,7 +20,10 @@ pub async fn run(
     };
 
     if !plan_path.exists() {
-        anyhow::bail!("Plan not found: {}", plan_path.display());
+        anyhow::bail!(
+            "Plan not found at {}. Run 'librarian plans list' to see available plans.",
+            plan_path.display()
+        );
     }
 
     let mut plan = Plan::load(&plan_path)?;
@@ -97,5 +100,8 @@ fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::Pa
     entries
         .first()
         .map(|e| e.path())
-        .ok_or_else(|| anyhow::anyhow!("No plans found in {}", plans_dir.display()))
+        .ok_or_else(|| anyhow::anyhow!(
+            "No plans found in {}. Run 'librarian process' to generate a plan first.",
+            plans_dir.display()
+        ))
 }

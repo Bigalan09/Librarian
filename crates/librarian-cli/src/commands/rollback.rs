@@ -15,7 +15,10 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
     };
 
     if !plan_path.exists() {
-        anyhow::bail!("Plan not found: {}", plan_path.display());
+        anyhow::bail!(
+            "Plan not found at {}. Run 'librarian plans list' to see available plans.",
+            plan_path.display()
+        );
     }
 
     let mut plan = Plan::load(&plan_path)?;
@@ -39,7 +42,10 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
 
 fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
     if !plans_dir.exists() {
-        anyhow::bail!("No plans directory found.");
+        anyhow::bail!(
+            "No plans directory found at {}. Run 'librarian process' to create a plan first.",
+            plans_dir.display()
+        );
     }
 
     let mut plans: Vec<Plan> = std::fs::read_dir(plans_dir)?
@@ -59,5 +65,8 @@ fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path:
     plans
         .first()
         .map(|p| plans_dir.join(format!("{}.json", p.id)))
-        .ok_or_else(|| anyhow::anyhow!("No applied plans found"))
+        .ok_or_else(|| anyhow::anyhow!(
+            "No applied plans found in {}. Only plans with status 'Applied' can be rolled back.",
+            plans_dir.display()
+        ))
 }

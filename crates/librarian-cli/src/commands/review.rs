@@ -57,11 +57,10 @@ pub async fn run() -> anyhow::Result<()> {
                 .map(|e| e.to_string_lossy().to_string())
                 .unwrap_or_default()
         ));
-        if reason_path.exists() {
-            if let Ok(reason) = std::fs::read_to_string(&reason_path) {
+        if reason_path.exists()
+            && let Ok(reason) = std::fs::read_to_string(&reason_path) {
                 println!("Reason: {}", reason.trim());
             }
-        }
 
         // Suggest the destination root as a starting point
         let suggested = cfg.destination_root.join(&filename);

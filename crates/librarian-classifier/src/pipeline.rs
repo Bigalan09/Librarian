@@ -91,30 +91,24 @@ impl ClassificationPipeline {
         }
 
         // --- Tier 2: Filename embedding ---
-        if !existing_buckets.is_empty() {
-            if let Ok(result) =
+        if !existing_buckets.is_empty()
+            && let Ok(result) =
                 try_filename_embedding(entry, provider, gate, cache, existing_buckets).await
-            {
-                if let Some(r) = result {
+                && let Some(r) = result {
                     return r;
                 }
-            }
-        }
 
         // --- Tier 3: Content embedding (text files only) ---
         let is_text = matches!(
             entry.extension.as_deref(),
             Some("txt" | "md" | "csv" | "pdf")
         );
-        if is_text && !existing_buckets.is_empty() {
-            if let Ok(result) =
+        if is_text && !existing_buckets.is_empty()
+            && let Ok(result) =
                 try_content_embedding(entry, provider, gate, cache, existing_buckets).await
-            {
-                if let Some(r) = result {
+                && let Some(r) = result {
                     return r;
                 }
-            }
-        }
 
         // --- Tier 4: LLM classifier ---
         match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples).await {

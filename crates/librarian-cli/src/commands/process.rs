@@ -9,6 +9,7 @@ use librarian_core::plan::{ActionType, Plan, PlannedAction, PlanStats};
 use librarian_core::walker;
 use librarian_core::IgnoreEngine;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     source: Vec<PathBuf>,
     destination: Option<PathBuf>,
@@ -27,7 +28,7 @@ pub async fn run(
     if let Some(p) = &provider {
         cfg.provider.provider_type = match p.as_str() {
             "openai" => ProviderType::OpenAi,
-            "lmstudio" | _ => ProviderType::LmStudio,
+            _ => ProviderType::LmStudio,
         };
     }
     if let Some(m) = llm_model {
@@ -48,7 +49,8 @@ pub async fn run(
     // Load rules
     if !rules_file.exists() {
         anyhow::bail!(
-            "Rules file not found: {}. Run 'librarian init' first.",
+            "Rules file not found at {}. Run 'librarian init' to create a default rules file, \
+             or pass --rules <path> to specify an alternative location.",
             rules_file.display()
         );
     }
@@ -73,7 +75,7 @@ pub async fn run(
 
     // Load embedding cache
     let cache_path = config::librarian_home().join("cache").join("embeddings.msgpack");
-    let mut embed_cache = librarian_providers::cache::EmbeddingCache::load(&cache_path)
+    let embed_cache = librarian_providers::cache::EmbeddingCache::load(&cache_path)
         .unwrap_or_default();
 
     // Scan each source folder
@@ -115,8 +117,10 @@ pub async fn run(
     let name = plan_name.unwrap_or_else(|| Plan::auto_name(&source_label));
 
     let mut plan = Plan::new(&name, sources.clone(), dest_root.clone());
-    let mut stats = PlanStats::default();
-    stats.total_files = all_entries.len();
+    let mut stats = PlanStats {
+        total_files: all_entries.len(),
+        ..PlanStats::default()
+    };
 
     // Confidence gate
     let gate = librarian_classifier::ConfidenceGate::new(cfg.thresholds.clone());

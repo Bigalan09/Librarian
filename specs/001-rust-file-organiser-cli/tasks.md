@@ -215,17 +215,17 @@
 
 **Purpose**: Output quality, documentation, configuration, and final validation
 
-- [ ] T099 {sonnet} Implement progress bar output in `crates/librarian-cli/src/output.rs` — multi-phase progress (scan, classify, plan) via indicatif, integrate with tracing (pause bars during log output), summary table at end per PRD section 13
-- [ ] T100 [P] {sonnet} Implement JSON output mode in `crates/librarian-cli/src/output.rs` — JSON lines for all commands, machine-parseable, no progress bars in JSON mode
-- [ ] T101 [P] {haiku} Add British English strings throughout all user-facing output — audit all crates for American English spellings (organize→organise, color→colour, behavior→behaviour, etc.)
-- [ ] T102 [P] {sonnet} Add comprehensive error messages with context in all crates — every error should include: what failed, why, what to do about it, per Observability principle
-- [ ] T103 [P] {haiku} Write example `config.yaml` with all options commented at `examples/config.yaml`
-- [ ] T104 [P] {haiku} Write example `rules.yaml` with common patterns at `examples/rules.yaml`
+- [x] T099 {sonnet} Implement progress bar output in `crates/librarian-cli/src/output.rs` — multi-phase progress (scan, classify, plan) via indicatif, integrate with tracing (pause bars during log output), summary table at end per PRD section 13
+- [x] T100 [P] {sonnet} Implement JSON output mode in `crates/librarian-cli/src/output.rs` — JSON lines for all commands, machine-parseable, no progress bars in JSON mode
+- [x] T101 [P] {haiku} Add British English strings throughout all user-facing output — audit all crates for American English spellings (organize→organise, color→colour, behavior→behaviour, etc.)
+- [x] T102 [P] {sonnet} Add comprehensive error messages with context in all crates — every error should include: what failed, why, what to do about it, per Observability principle
+- [x] T103 [P] {haiku} Write example `config.yaml` with all options commented at `examples/config.yaml`
+- [x] T104 [P] {haiku} Write example `rules.yaml` with common patterns at `examples/rules.yaml`
 - [ ] T105 {sonnet} Validate quickstart.md checklist end-to-end — run through every step in `specs/001-rust-file-organiser-cli/quickstart.md`, fix any issues
 - [ ] T109 {sonnet} Add performance benchmark in `tests/integration/benchmarks.rs` — generate 1,000 fixture files, run full process pipeline, assert wall-clock < 180s (SC-001); run apply+rollback on 500-file plan, assert rollback < 30s (SC-007)
-- [ ] T106 {sonnet} Run `cargo clippy -- -D warnings` and fix all warnings across workspace
-- [ ] T107 {sonnet} Run `cargo test` full suite and verify all tests pass, fix any failures
-- [ ] T108 [P] {haiku} Verify zero `unsafe` blocks outside xattr — audit all crates, document any `unsafe` with comments explaining why it's needed
+- [x] T106 {sonnet} Run `cargo clippy -- -D warnings` and fix all warnings across workspace
+- [x] T107 {sonnet} Run `cargo test` full suite and verify all tests pass, fix any failures
+- [x] T108 [P] {haiku} Verify zero `unsafe` blocks outside xattr — audit all crates, document any `unsafe` with comments explaining why it's needed
 
 ---
 

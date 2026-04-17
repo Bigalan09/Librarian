@@ -1,0 +1,184 @@
+# Librarian — Example Rules
+#
+# Default location: ~/.librarian/rules.yaml
+# Rules are evaluated in order; the FIRST matching rule wins.
+# Place more-specific rules before more-general ones.
+#
+# Each rule has:
+#   name         — human-readable label shown in logs and the review UI
+#   match        — criteria that must ALL be satisfied (AND logic)
+#   destination  — path relative to destination_root; supports template variables:
+#                    {year}   — file's modification year (e.g. 2026)
+#                    {month}  — zero-padded month       (e.g. 04)
+#                    {date}   — ISO date                (e.g. 2026-04-17)
+#                    {ext}    — file extension           (e.g. pdf)
+#                    {source} — inbox folder name        (e.g. Downloads)
+#   tags         — macOS Finder tags to apply after the move (optional)
+#   colour       — macOS Finder colour label: none, grey, green, purple,
+#                  blue, yellow, red, orange  (optional)
+#   clean_name   — if true, strip junk prefixes/timestamps from the filename
+#                  before moving  (default: false)
+#
+# Pattern syntax for filename / path / content fields:
+#   Glob patterns  — standard shell globs, e.g.  "*invoice*"  or  "IMG_*.jpg"
+#   Regex patterns — prefix with "regex:", e.g.  "regex:^Screenshot \d{4}"
+#
+# File sizes (min_size / max_size) are in bytes.
+
+rules:
+
+  # ---------------------------------------------------------------------------
+  # Work — Invoices (PDF)
+  # ---------------------------------------------------------------------------
+  # Matches any PDF whose filename contains "invoice" (case-insensitive glob).
+  - name: Work invoices
+    match:
+      extension: pdf
+      filename: "*[Ii]nvoice*"
+    destination: "{year}/Work/Invoices"
+    tags:
+      - invoice
+      - work
+    colour: green
+
+  # ---------------------------------------------------------------------------
+  # Work — Receipts (PDF)
+  # ---------------------------------------------------------------------------
+  - name: Work receipts
+    match:
+      extension: pdf
+      filename: "*[Rr]eceipt*"
+    destination: "{year}/Work/Receipts"
+    tags:
+      - receipt
+      - work
+    colour: green
+
+  # ---------------------------------------------------------------------------
+  # Screenshots (PNG with junk name pattern)
+  # ---------------------------------------------------------------------------
+  # macOS names screenshots "Screenshot YYYY-MM-DD at HH.MM.SS.png".
+  # The regex anchors to that prefix; clean_name removes the timestamp clutter.
+  - name: Screenshots
+    match:
+      extension: png
+      # Regex example — prefix with "regex:" to use a regular expression
+      filename: "regex:^Screenshot \\d{4}-\\d{2}-\\d{2}"
+    destination: "{year}/{month}/Screenshots"
+    tags:
+      - screenshot
+    colour: blue
+    clean_name: true
+
+  # ---------------------------------------------------------------------------
+  # Photos — camera roll (IMG_ pattern)
+  # ---------------------------------------------------------------------------
+  # Matches the IMG_XXXX naming convention used by iPhones, Android devices,
+  # and many compact cameras.  Covers jpeg, jpg, heic, and dng.
+  - name: Camera photos (IMG)
+    match:
+      filename: "IMG_*"
+      # Glob example for multiple extensions — match any of the listed types
+      # by creating one rule per extension, or use a regex:
+      filename: "regex:^IMG_\\d+"
+    destination: "{year}/{month}/Photos"
+    tags:
+      - photo
+    colour: yellow
+
+  # A separate rule covers HEIC originals from iCloud.
+  - name: Camera photos (HEIC)
+    match:
+      extension: heic
+    destination: "{year}/{month}/Photos"
+    tags:
+      - photo
+    colour: yellow
+
+  # ---------------------------------------------------------------------------
+  # CSV data files
+  # ---------------------------------------------------------------------------
+  # Any CSV larger than 1 KB is treated as a data export worth keeping.
+  - name: CSV data exports
+    match:
+      extension: csv
+      min_size: 1024
+    destination: "{year}/Data"
+    tags:
+      - data
+    colour: purple
+
+  # ---------------------------------------------------------------------------
+  # Markdown notes
+  # ---------------------------------------------------------------------------
+  - name: Markdown notes
+    match:
+      extension: md
+    destination: "{year}/Notes"
+    tags:
+      - note
+    colour: none
+    clean_name: false
+
+  # ---------------------------------------------------------------------------
+  # Code archives (zip / tar.gz)
+  # ---------------------------------------------------------------------------
+  # Matches zip files whose name looks like a repository archive
+  # (e.g. "my-project-main.zip", "library-v1.2.3.tar.gz").
+  # The path criterion ensures we only catch files from Downloads.
+  - name: Code archives (zip)
+    match:
+      extension: zip
+      # Glob example — "*-main" and "*-master" are common GitHub archive names
+      filename: "regex:.*-(main|master|v\\d+\\.\\d+)"
+      path: "*/Downloads/*"
+    destination: "{year}/Code/Archives"
+    tags:
+      - code
+      - archive
+    colour: orange
+
+  - name: Code archives (tar.gz)
+    match:
+      # .tar.gz has a compound extension; match on the filename glob instead
+      filename: "*.tar.gz"
+    destination: "{year}/Code/Archives"
+    tags:
+      - code
+      - archive
+    colour: orange
+
+  # ---------------------------------------------------------------------------
+  # Music files
+  # ---------------------------------------------------------------------------
+  - name: Music
+    match:
+      # Use a regex to match several audio extensions in one rule
+      filename: "regex:.*\\.(mp3|flac|aac|m4a|ogg|wav|aiff)$"
+    destination: "{year}/Music"
+    tags:
+      - music
+    colour: none
+
+  # ---------------------------------------------------------------------------
+  # Video files
+  # ---------------------------------------------------------------------------
+  - name: Videos
+    match:
+      filename: "regex:.*\\.(mp4|mkv|mov|avi|m4v|webm)$"
+    destination: "{year}/{month}/Videos"
+    tags:
+      - video
+    colour: none
+
+  # ---------------------------------------------------------------------------
+  # Fallback — all remaining PDFs
+  # ---------------------------------------------------------------------------
+  # This rule sits below the invoice/receipt rules so it only catches PDFs
+  # that did not match any of the more-specific rules above.
+  - name: General PDFs
+    match:
+      extension: pdf
+    destination: "{year}/Documents/PDF"
+    tags: []
+    colour: none

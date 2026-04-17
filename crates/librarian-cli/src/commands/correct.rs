@@ -25,7 +25,10 @@ pub async fn run(
     };
 
     if !file.exists() {
-        anyhow::bail!("File not found: {}", file.display());
+        anyhow::bail!(
+            "File not found at {}. Check the path and try again.",
+            file.display()
+        );
     }
 
     // Find the file in the decision log to get the original placement
@@ -65,7 +68,10 @@ pub async fn run(
         }
         None => {
             if retag.is_none() {
-                anyhow::bail!("Must specify --to or --retag (or both)");
+                anyhow::bail!(
+                    "Nothing to do: specify --to <destination> to move the file, \
+                     --retag <tags> to update its tags, or both."
+                );
             }
             // Retag only, no path change
             file.clone()
@@ -99,8 +105,8 @@ pub async fn run(
     record_correction(&corrections_path, &decisions_path, &correction)?;
 
     // If --to was specified, actually move the file
-    if let Some(_) = &to {
-        if file != corrected_path {
+    if to.is_some()
+        && file != corrected_path {
             if let Some(parent) = corrected_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -111,7 +117,6 @@ pub async fn run(
                 corrected_path.display()
             );
         }
-    }
 
     println!("Correction recorded for {}", file_hash);
 
@@ -133,17 +138,16 @@ fn hash_file(path: &PathBuf) -> anyhow::Result<String> {
 
 /// Detect the source inbox name from a file path by comparing against
 /// configured inbox folders.
-fn detect_source_inbox(path: &PathBuf, cfg: &config::AppConfig) -> String {
+fn detect_source_inbox(path: &std::path::Path, cfg: &config::AppConfig) -> String {
     for inbox in &cfg.inbox_folders {
-        if let Some(name) = inbox.file_name() {
-            if path.starts_with(inbox)
+        if let Some(name) = inbox.file_name()
+            && (path.starts_with(inbox)
                 || path
                     .to_string_lossy()
-                    .contains(&name.to_string_lossy().as_ref())
+                    .contains(name.to_string_lossy().as_ref()))
             {
                 return name.to_string_lossy().to_string();
             }
-        }
     }
     // Fallback
     path.parent()
