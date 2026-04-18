@@ -82,7 +82,7 @@ pub async fn run(
     Ok(())
 }
 
-pub(crate) fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
     if !plans_dir.exists() {
         anyhow::bail!("No plans directory found. Run 'librarian process' first.");
     }

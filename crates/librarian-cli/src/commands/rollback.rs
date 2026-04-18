@@ -42,9 +42,7 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn most_recent_applied(
-    plans_dir: &std::path::Path,
-) -> anyhow::Result<std::path::PathBuf> {
+fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
     if !plans_dir.exists() {
         anyhow::bail!(
             "No plans directory found at {}. Run 'librarian process' to create a plan first.",
@@ -123,14 +121,9 @@ mod tests {
     fn most_recent_applied_finds_applied_plan() {
         let dir = tempfile::tempdir().unwrap();
 
-        let plan = make_plan("applied-plan");
+        let mut plan = make_plan("applied-plan");
+        plan.status = PlanStatus::Applied;
         plan.save(dir.path()).unwrap();
-
-        // Load, modify status, re-save
-        let plan_path = dir.path().join(format!("{}.json", plan.id));
-        let json = std::fs::read_to_string(&plan_path).unwrap();
-        let modified = json.replace("\"draft\"", "\"applied\"");
-        std::fs::write(&plan_path, modified).unwrap();
 
         let result = most_recent_applied(dir.path()).unwrap();
         assert!(result.to_string_lossy().contains(&plan.id));
