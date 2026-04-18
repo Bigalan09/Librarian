@@ -105,9 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn validate_missing_rules_file() {
+    fn validate_missing_rules_file_returns_error() {
         let path = PathBuf::from("/nonexistent/rules.yaml");
-        assert!(!path.exists());
+        let result = librarian_rules::load_rules(&path);
+        assert!(result.is_err());
     }
 
     #[test]

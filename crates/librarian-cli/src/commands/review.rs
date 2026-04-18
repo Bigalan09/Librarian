@@ -222,30 +222,19 @@ mod tests {
     }
 
     #[test]
-    fn suggested_destination_uses_filename() {
-        let dest_root = PathBuf::from("/home/user/Library-Managed");
-        let filename = "invoice.pdf";
-        let suggested = dest_root.join(filename);
-        assert_eq!(
-            suggested,
-            PathBuf::from("/home/user/Library-Managed/invoice.pdf")
-        );
-    }
-
-    #[test]
     fn move_to_directory_appends_filename() {
-        let dest = PathBuf::from("/tmp/Documents");
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("Documents");
+        std::fs::create_dir_all(&dest).unwrap();
         let filename = "report.pdf";
 
-        // Simulate the command logic: if dest is a directory, join filename
         let final_dest = if dest.is_dir() {
             dest.join(filename)
         } else {
             dest.clone()
         };
 
-        // /tmp/Documents likely doesn't exist in test, so it stays as-is
-        assert_eq!(final_dest, PathBuf::from("/tmp/Documents"));
+        assert_eq!(final_dest, dest.join("report.pdf"));
     }
 
     #[test]
@@ -259,21 +248,6 @@ mod tests {
         assert_eq!(
             reason_path,
             PathBuf::from("/tmp/NeedsReview/report.pdf.reason.txt")
-        );
-    }
-
-    #[test]
-    fn reason_path_no_extension() {
-        let path = PathBuf::from("/tmp/NeedsReview/Makefile");
-        let ext = path
-            .extension()
-            .map(|e| e.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let reason_path = path.with_extension(format!("{ext}.reason.txt"));
-        // with_extension replaces nothing, so we get "Makefile..reason.txt"
-        assert_eq!(
-            reason_path,
-            PathBuf::from("/tmp/NeedsReview/Makefile..reason.txt")
         );
     }
 }

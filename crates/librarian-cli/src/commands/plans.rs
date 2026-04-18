@@ -183,16 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn show_plan_not_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let plans_dir = dir.path().join("plans");
-        std::fs::create_dir_all(&plans_dir).unwrap();
-
-        let plan_path = plans_dir.join("nonexistent.json");
-        assert!(!plan_path.exists());
-    }
-
-    #[test]
     fn show_plan_loads_correctly() {
         let dir = tempfile::tempdir().unwrap();
         let plans_dir = dir.path().join("plans");
@@ -224,10 +214,8 @@ mod tests {
         for p in &plans_before {
             if p.created_at < cutoff {
                 let path = plans_dir.join(format!("{}.json", p.id));
-                if path.exists() {
-                    std::fs::remove_file(&path).unwrap();
-                    removed += 1;
-                }
+                std::fs::remove_file(&path).unwrap();
+                removed += 1;
             }
         }
         assert_eq!(removed, 1);

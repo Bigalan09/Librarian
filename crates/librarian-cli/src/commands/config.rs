@@ -48,20 +48,6 @@ mod tests {
     }
 
     #[test]
-    fn config_edit_requires_existing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.yaml");
-        assert!(!config_path.exists());
-    }
-
-    #[test]
-    fn editor_env_defaults_to_vi() {
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
-        // Editor should be a non-empty string
-        assert!(!editor.is_empty());
-    }
-
-    #[test]
     fn config_roundtrips_through_yaml() {
         let cfg = config::AppConfig::default();
         let yaml = serde_yaml::to_string(&cfg).unwrap();

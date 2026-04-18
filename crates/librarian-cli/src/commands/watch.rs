@@ -5,10 +5,33 @@
 //! interrupted with Ctrl-C.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use librarian_core::config;
 use librarian_core::plan::{Plan, PlanStatus};
 use librarian_learning::CorrectionWatcher;
+
+/// Build a manifest of (file_hash -> destination_path) from applied plans.
+///
+/// Only includes entries where the destination file still exists on disk
+/// and the hash is non-empty.
+fn build_manifest(plans_dir: &Path) -> anyhow::Result<HashMap<String, PathBuf>> {
+    let mut manifest = HashMap::new();
+    if !plans_dir.exists() {
+        return Ok(manifest);
+    }
+    for plan in Plan::list(plans_dir)? {
+        if plan.status != PlanStatus::Applied {
+            continue;
+        }
+        for action in &plan.actions {
+            if action.destination_path.exists() && !action.file_hash.is_empty() {
+                manifest.insert(action.file_hash.clone(), action.destination_path.clone());
+            }
+        }
+    }
+    Ok(manifest)
+}
 
 pub async fn run() -> anyhow::Result<()> {
     let cfg = config::load_default()?;
@@ -17,20 +40,7 @@ pub async fn run() -> anyhow::Result<()> {
     let decisions_path = home.join("history").join("decisions.jsonl");
     let plans_dir = home.join("plans");
 
-    // Build a manifest of known file placements from applied plans
-    let mut manifest: HashMap<String, std::path::PathBuf> = HashMap::new();
-    if plans_dir.exists() {
-        for plan in Plan::list(&plans_dir)? {
-            if plan.status != PlanStatus::Applied {
-                continue;
-            }
-            for action in &plan.actions {
-                if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
-                }
-            }
-        }
-    }
+    let manifest = build_manifest(&plans_dir)?;
 
     if manifest.is_empty() {
         println!("No applied plans with active file placements found. Apply a plan first.");
@@ -73,10 +83,10 @@ mod tests {
     use librarian_core::decision::ClassificationMethod;
     use librarian_core::plan::{ActionType, Plan, PlannedAction};
 
-    fn make_action(dest: std::path::PathBuf, hash: &str) -> PlannedAction {
+    fn make_action(dest: PathBuf, hash: &str) -> PlannedAction {
         PlannedAction {
             file_hash: hash.to_string(),
-            source_path: std::path::PathBuf::from("/tmp/source/file.txt"),
+            source_path: PathBuf::from("/tmp/source/file.txt"),
             destination_path: dest,
             action_type: ActionType::Move,
             classification_method: ClassificationMethod::Rule,
@@ -99,28 +109,12 @@ mod tests {
         let dest_file = dest.join("file.txt");
         std::fs::write(&dest_file, "content").unwrap();
 
-        let mut plan = Plan::new(
-            "test",
-            vec![std::path::PathBuf::from("/tmp/src")],
-            dest.clone(),
-        );
+        let mut plan = Plan::new("test", vec![PathBuf::from("/tmp/src")], dest.clone());
         plan.actions.push(make_action(dest_file.clone(), "abc123"));
         plan.status = PlanStatus::Applied;
         plan.save(&plans_dir).unwrap();
 
-        // Build manifest like the watch command does
-        let mut manifest: HashMap<String, std::path::PathBuf> = HashMap::new();
-        for p in Plan::list(&plans_dir).unwrap() {
-            if p.status != PlanStatus::Applied {
-                continue;
-            }
-            for action in &p.actions {
-                if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
-                }
-            }
-        }
-
+        let manifest = build_manifest(&plans_dir).unwrap();
         assert_eq!(manifest.len(), 1);
         assert_eq!(manifest.get("abc123").unwrap(), &dest_file);
     }
@@ -133,27 +127,11 @@ mod tests {
         std::fs::create_dir_all(&dest).unwrap();
         std::fs::write(dest.join("f.txt"), "data").unwrap();
 
-        let mut plan = Plan::new(
-            "draft",
-            vec![std::path::PathBuf::from("/tmp/src")],
-            dest.clone(),
-        );
+        let mut plan = Plan::new("draft", vec![PathBuf::from("/tmp/src")], dest.clone());
         plan.actions.push(make_action(dest.join("f.txt"), "hash1"));
-        // Plan stays as Draft (default)
         plan.save(&plans_dir).unwrap();
 
-        let mut manifest: HashMap<String, std::path::PathBuf> = HashMap::new();
-        for p in Plan::list(&plans_dir).unwrap() {
-            if p.status != PlanStatus::Applied {
-                continue;
-            }
-            for action in &p.actions {
-                if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
-                }
-            }
-        }
-
+        let manifest = build_manifest(&plans_dir).unwrap();
         assert!(manifest.is_empty(), "draft plans should be skipped");
     }
 
@@ -165,27 +143,12 @@ mod tests {
         std::fs::create_dir_all(&dest).unwrap();
         std::fs::write(dest.join("f.txt"), "data").unwrap();
 
-        let mut plan = Plan::new(
-            "test",
-            vec![std::path::PathBuf::from("/tmp/src")],
-            dest.clone(),
-        );
+        let mut plan = Plan::new("test", vec![PathBuf::from("/tmp/src")], dest.clone());
         plan.actions.push(make_action(dest.join("f.txt"), ""));
         plan.status = PlanStatus::Applied;
         plan.save(&plans_dir).unwrap();
 
-        let mut manifest: HashMap<String, std::path::PathBuf> = HashMap::new();
-        for p in Plan::list(&plans_dir).unwrap() {
-            if p.status != PlanStatus::Applied {
-                continue;
-            }
-            for action in &p.actions {
-                if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
-                }
-            }
-        }
-
+        let manifest = build_manifest(&plans_dir).unwrap();
         assert!(manifest.is_empty(), "empty hashes should be skipped");
     }
 
@@ -196,29 +159,19 @@ mod tests {
         let dest = dir.path().join("dest");
         std::fs::create_dir_all(&dest).unwrap();
 
-        let mut plan = Plan::new(
-            "test",
-            vec![std::path::PathBuf::from("/tmp/src")],
-            dest.clone(),
-        );
-        // Destination file does NOT exist
+        let mut plan = Plan::new("test", vec![PathBuf::from("/tmp/src")], dest.clone());
         plan.actions
             .push(make_action(dest.join("gone.txt"), "hash1"));
         plan.status = PlanStatus::Applied;
         plan.save(&plans_dir).unwrap();
 
-        let mut manifest: HashMap<String, std::path::PathBuf> = HashMap::new();
-        for p in Plan::list(&plans_dir).unwrap() {
-            if p.status != PlanStatus::Applied {
-                continue;
-            }
-            for action in &p.actions {
-                if action.destination_path.exists() && !action.file_hash.is_empty() {
-                    manifest.insert(action.file_hash.clone(), action.destination_path.clone());
-                }
-            }
-        }
-
+        let manifest = build_manifest(&plans_dir).unwrap();
         assert!(manifest.is_empty(), "missing files should be skipped");
+    }
+
+    #[test]
+    fn manifest_nonexistent_dir_returns_empty() {
+        let manifest = build_manifest(Path::new("/nonexistent/plans")).unwrap();
+        assert!(manifest.is_empty());
     }
 }
