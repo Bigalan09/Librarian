@@ -130,6 +130,41 @@ enum Commands {
         retag: Option<String>,
     },
 
+    /// Suggest a folder structure and rules using AI
+    SuggestStructure {
+        /// Inbox folders to scan (repeatable)
+        #[arg(long, value_name = "PATH")]
+        source: Vec<std::path::PathBuf>,
+
+        /// Target root directory
+        #[arg(long, value_name = "PATH")]
+        destination: Option<std::path::PathBuf>,
+
+        /// AI provider: lmstudio or openai
+        #[arg(long, value_name = "PROVIDER")]
+        provider: Option<String>,
+
+        /// Model for chat completions
+        #[arg(long, value_name = "MODEL")]
+        llm_model: Option<String>,
+
+        /// Model for embeddings
+        #[arg(long, value_name = "MODEL")]
+        embed_model: Option<String>,
+
+        /// Maximum number of files to analyse
+        #[arg(long, value_name = "COUNT", default_value = "200")]
+        max_files: Option<usize>,
+
+        /// Create the suggested folder structure
+        #[arg(long)]
+        apply_folders: bool,
+
+        /// Write suggested rules to rules.yaml
+        #[arg(long)]
+        apply_rules: bool,
+    },
+
     /// Watch destination for manual corrections (runs until interrupted)
     Watch,
 
@@ -249,6 +284,28 @@ async fn main() -> anyhow::Result<()> {
             RulesAction::Suggest => commands::rules::suggest().await,
         },
         Commands::Correct { file, to, retag } => commands::correct::run(file, to, retag).await,
+        Commands::SuggestStructure {
+            source,
+            destination,
+            provider,
+            llm_model,
+            embed_model,
+            max_files,
+            apply_folders,
+            apply_rules,
+        } => {
+            commands::suggest::run(
+                source,
+                destination,
+                provider,
+                llm_model,
+                embed_model,
+                max_files,
+                apply_folders,
+                apply_rules,
+            )
+            .await
+        }
         Commands::Watch => commands::watch::run().await,
         Commands::Review => commands::review::run().await,
         Commands::Config { action } => match action {

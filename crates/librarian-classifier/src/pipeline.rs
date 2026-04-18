@@ -13,6 +13,7 @@ use crate::confidence::{ConfidenceGate, GateResult};
 use crate::content::extract_content;
 use crate::embedding::{cosine_similarity, embed_text_dyn};
 use crate::llm::{LlmClassifier, LlmResult};
+use crate::qdrant::VectorStore;
 
 /// Cache for embedding vectors, keyed by text (e.g. bucket name or filename).
 #[derive(Debug, Default)]
@@ -46,22 +47,24 @@ pub struct ClassificationResult {
     pub colour: Option<FinderColour>,
     pub reason: Option<String>,
     pub needs_review: bool,
+    /// The embedding vector for this file's name (if computed).
+    /// Used to update the vector store after classification.
+    pub filename_embedding: Option<Vec<f32>>,
 }
 
 /// The tiered classification pipeline.
 ///
 /// Processes files through multiple classification tiers in order:
 /// 1. Rules engine (exact/pattern matching)
-/// 2. Filename embedding (cosine similarity)
-/// 3. Content embedding (text files only)
-/// 4. LLM classifier (final tier)
+/// 2. Centroid similarity (from vector store, if available)
+/// 3. Filename embedding (cosine similarity against bucket name embeddings)
+/// 4. Content embedding (text files only)
+/// 5. LLM classifier (final tier)
 pub struct ClassificationPipeline;
 
 impl ClassificationPipeline {
     /// Run a file entry through the tiered classification pipeline.
-    ///
-    /// The pipeline tries each tier in order, returning as soon as one tier
-    /// produces a result with sufficient confidence.
+    #[allow(clippy::too_many_arguments)]
     pub async fn classify(
         entry: &FileEntry,
         rules_engine: &RuleEngine,
@@ -70,6 +73,7 @@ impl ClassificationPipeline {
         cache: &mut EmbeddingCache,
         existing_buckets: &[String],
         few_shot_examples: &[String],
+        vector_store: Option<&dyn VectorStore>,
     ) -> ClassificationResult {
         // --- Tier 1: Rules engine ---
         if let Some(rule) = rules_engine.evaluate(entry) {
@@ -87,10 +91,56 @@ impl ClassificationPipeline {
                 colour: rule.colour,
                 reason: Some(format!("Matched rule: {}", rule.name)),
                 needs_review: false,
+                filename_embedding: None,
             };
         }
 
-        // --- Tier 2: Filename embedding ---
+        // --- Tier 2: Centroid similarity (from vector store) ---
+        let filetype = entry.extension.as_deref().unwrap_or("unknown");
+        if let Some(vs) = vector_store
+            && !vs.is_empty()
+            && let Ok(embedding) = embed_text_dyn(provider, &entry.name).await
+            && let Some(hit) = vs.find_nearest(&entry.source_inbox, filetype, &embedding)
+        {
+            let sim = hit.score as f64;
+            match gate.check_filename_embedding(sim, &hit.bucket) {
+                GateResult::Accept {
+                    destination,
+                    confidence,
+                } => {
+                    info!(
+                        file = %entry.name,
+                        destination = %destination,
+                        confidence = confidence,
+                        "Classified by centroid similarity"
+                    );
+                    return ClassificationResult {
+                        destination: PathBuf::from(destination),
+                        method: ClassificationMethod::FilenameEmbedding,
+                        confidence: Some(confidence),
+                        tags: Vec::new(),
+                        colour: None,
+                        reason: Some(format!(
+                            "Centroid similarity to '{}': {:.3}",
+                            hit.bucket, sim
+                        )),
+                        needs_review: false,
+                        filename_embedding: Some(embedding),
+                    };
+                }
+                GateResult::Escalate => {
+                    debug!(
+                        file = %entry.name,
+                        best_sim = sim,
+                        best_bucket = %hit.bucket,
+                        "Centroid similarity below threshold, escalating"
+                    );
+                }
+                GateResult::NeedsReview { .. } => {}
+            }
+        }
+
+        // --- Tier 3: Filename embedding against bucket names ---
         if !existing_buckets.is_empty()
             && let Ok(result) =
                 try_filename_embedding(entry, provider, gate, cache, existing_buckets).await
@@ -99,7 +149,7 @@ impl ClassificationPipeline {
             return r;
         }
 
-        // --- Tier 3: Content embedding (text files only) ---
+        // --- Tier 4: Content embedding (text files only) ---
         let is_text = matches!(
             entry.extension.as_deref(),
             Some("txt" | "md" | "csv" | "pdf")
@@ -113,7 +163,7 @@ impl ClassificationPipeline {
             return r;
         }
 
-        // --- Tier 4: LLM classifier ---
+        // --- Tier 5: LLM classifier ---
         match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples)
             .await
         {
@@ -128,6 +178,7 @@ impl ClassificationPipeline {
                     colour: None,
                     reason: Some(format!("All classification tiers failed: {e}")),
                     needs_review: true,
+                    filename_embedding: None,
                 }
             }
         }
@@ -184,6 +235,7 @@ async fn try_filename_embedding(
                     "Filename embedding similarity to '{best_bucket}': {best_sim:.3}"
                 )),
                 needs_review: false,
+                filename_embedding: Some(filename_embedding),
             }))
         }
         GateResult::Escalate => {
@@ -260,6 +312,7 @@ async fn try_content_embedding(
                     "Content embedding similarity to '{best_bucket}': {best_sim:.3}"
                 )),
                 needs_review: false,
+                filename_embedding: None,
             }))
         }
         GateResult::Escalate => {
@@ -299,6 +352,7 @@ fn build_llm_result(
                 colour: None,
                 reason: Some(llm_result.reason.clone()),
                 needs_review: false,
+                filename_embedding: None,
             }
         }
         GateResult::NeedsReview { reason } => {
@@ -315,6 +369,7 @@ fn build_llm_result(
                 colour: None,
                 reason: Some(reason),
                 needs_review: true,
+                filename_embedding: None,
             }
         }
         GateResult::Escalate => {
@@ -327,6 +382,7 @@ fn build_llm_result(
                 colour: None,
                 reason: Some("Unexpected escalation from LLM tier".to_string()),
                 needs_review: true,
+                filename_embedding: None,
             }
         }
     }
@@ -430,6 +486,7 @@ rules:
             &mut cache,
             &[],
             &[],
+            None,
         )
         .await;
 
@@ -457,14 +514,12 @@ rules:
             &mut cache,
             &["Documents".to_string()],
             &[],
+            None,
         )
         .await;
 
         // Since embedding similarity will be 1.0 (identical mock vectors),
         // it should be caught by filename embedding with the mock.
-        // But the mock returns the same vector for everything, so sim = 1.0,
-        // which exceeds the threshold. Let's adjust expectations.
-        // The mock returns identical vectors for all texts, so cosine sim = 1.0.
         assert!(!result.needs_review);
     }
 
@@ -487,6 +542,7 @@ rules:
             &mut cache,
             &[],
             &[],
+            None,
         )
         .await;
 
@@ -512,11 +568,77 @@ rules:
             &mut cache,
             &buckets,
             &[],
+            None,
         )
         .await;
 
         // Bucket embeddings should now be cached
         assert!(cache.get("Documents").is_some());
         assert!(cache.get("Photos").is_some());
+    }
+
+    #[tokio::test]
+    async fn centroid_match_takes_priority_over_bucket_embedding() {
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default());
+        let chat_response =
+            r#"{"destination": "Other", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
+        // Provider returns [0.9, 0.1, 0.0] for all embeds
+        let provider = MockProvider::new(vec![0.9, 0.1, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        // Set up vector store with a centroid that matches well
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.msgpack");
+        let mut vs = crate::qdrant::InMemoryVectorStore::new(path);
+        vs.upsert("Downloads", "xyz", "Invoices", &[0.9, 0.1, 0.0], 1.0);
+
+        let entry = make_entry("test.xyz", Some("xyz"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &["Documents".to_string()],
+            &[],
+            Some(&vs),
+        )
+        .await;
+
+        // Should match via centroid, not bucket name embedding
+        assert_eq!(result.destination, PathBuf::from("Invoices"));
+        assert_eq!(result.method, ClassificationMethod::FilenameEmbedding);
+        assert!(result.filename_embedding.is_some());
+    }
+
+    #[tokio::test]
+    async fn few_shot_examples_passed_to_llm() {
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default());
+        let chat_response = r#"{"destination": "Personal", "confidence": 0.85, "tags": ["personal"], "reason": "Based on previous corrections"}"#;
+        // Zero vector forces escalation past embedding tiers
+        let provider = MockProvider::new(vec![0.0, 0.0, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        let examples = vec![
+            "You previously placed report.pdf into /Work. The user moved it to /Personal. Learn from this.".to_string(),
+        ];
+
+        let entry = make_entry("summary.doc", Some("doc"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &[],
+            &examples,
+            None,
+        )
+        .await;
+
+        assert_eq!(result.destination, PathBuf::from("Personal"));
+        assert!(!result.needs_review);
     }
 }
