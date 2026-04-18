@@ -8,9 +8,11 @@ use librarian_classifier::{ConfidenceGate, VectorStore};
 use librarian_core::IgnoreEngine;
 use librarian_core::config::{self, ProviderType};
 use librarian_core::decision::ClassificationMethod;
-use librarian_core::file_entry::FinderColour;
+use librarian_core::file_entry::{FileEntry, FinderColour};
 use librarian_core::plan::{ActionType, Plan, PlanStats, PlannedAction};
 use librarian_core::walker;
+use librarian_providers::router::ErasedProvider;
+use librarian_providers::traits::ChatMessage;
 
 /// Scan the destination root for existing top-level folder names.
 ///
@@ -49,10 +51,10 @@ pub async fn run(
     llm_model: Option<String>,
     embed_model: Option<String>,
     rules_path: Option<PathBuf>,
-    _threshold: Option<f64>,
+    threshold: Option<f64>,
     _dry_run: bool,
     plan_name: Option<String>,
-    _rename: bool,
+    rename: bool,
 ) -> anyhow::Result<()> {
     let mut cfg = config::load_default()?;
 
@@ -86,6 +88,11 @@ pub async fn run(
     }
     if let Some(m) = embed_model {
         cfg.provider.embed_model = Some(m);
+    }
+    if let Some(t) = threshold {
+        cfg.thresholds.filename_embedding = t;
+        cfg.thresholds.content_embedding = t;
+        cfg.thresholds.llm_confidence = t;
     }
 
     let sources = if source.is_empty() {
@@ -309,8 +316,6 @@ pub async fn run(
                 });
                 stats.needs_review += 1;
             } else {
-                let destination_path = dest_root.join(&result.destination).join(&entry.name);
-
                 // Update vector store with the classification result's embedding
                 if let Some(ref embedding) = result.filename_embedding {
                     let ft = entry.extension.as_deref().unwrap_or("unknown");
@@ -324,6 +329,18 @@ pub async fn run(
                     );
                 }
 
+                // Optionally suggest a rename
+                let rename_to = if rename {
+                    let dest_str = result.destination.to_string_lossy();
+                    suggest_rename(provider, entry, &dest_str).await
+                } else {
+                    None
+                };
+
+                let final_name = rename_to.as_deref().unwrap_or(&entry.name);
+                let destination_path = dest_root.join(&result.destination).join(final_name);
+                let original_name = rename_to.as_ref().map(|_| entry.name.clone());
+
                 plan.actions.push(PlannedAction {
                     file_hash: entry.hash.clone(),
                     source_path: entry.path.clone(),
@@ -333,8 +350,8 @@ pub async fn run(
                     confidence: result.confidence,
                     tags: result.tags,
                     colour: result.colour,
-                    rename_to: None,
-                    original_name: None,
+                    rename_to,
+                    original_name,
                     reason: result.reason,
                 });
                 stats.ai_classified += 1;
@@ -397,6 +414,50 @@ pub async fn run(
     println!("Run 'librarian apply --plan {}' to execute.", plan.name);
 
     Ok(())
+}
+
+/// Ask the LLM to suggest a cleaner filename for a file.
+///
+/// Returns `None` if the current name is already clean or the LLM declines.
+async fn suggest_rename(
+    provider: &dyn ErasedProvider,
+    entry: &FileEntry,
+    destination: &str,
+) -> Option<String> {
+    let ext = entry.extension.as_deref().unwrap_or("");
+    let prompt = format!(
+        "Given a file named '{}' being placed into folder '{}', suggest a cleaner, \
+         more descriptive filename. Keep the extension '{ext}'. If the name is already \
+         fine, respond with just the word KEEP. Otherwise respond with just the new \
+         filename, nothing else.",
+        entry.name, destination,
+    );
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: "You are a file renaming assistant. Respond with only the suggested \
+                     filename or the word KEEP. No explanation."
+                .to_string(),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        },
+    ];
+    match provider.chat(messages, 0.1, 64).await {
+        Ok(resp) => {
+            let suggestion = resp.content.trim().to_string();
+            if suggestion.eq_ignore_ascii_case("KEEP") || suggestion == entry.name {
+                None
+            } else {
+                Some(suggestion)
+            }
+        }
+        Err(e) => {
+            tracing::debug!("Rename suggestion failed: {e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

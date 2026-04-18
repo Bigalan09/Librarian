@@ -106,11 +106,9 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
 
     println!("Correction recorded for {}", file_hash);
 
-    // Update centroids if we have an embedding store
-    let centroid_path = home.join("history/centroids.msgpack");
-    if centroid_path.exists() {
-        tracing::info!("Centroid update would happen here with embedding support");
-    }
+    // Centroid drift happens automatically during the next `process` run:
+    // the correction is recorded in corrections.jsonl, and few-shot examples
+    // + embedding updates are computed when files are re-classified.
 
     Ok(())
 }
