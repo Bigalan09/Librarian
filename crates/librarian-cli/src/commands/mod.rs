@@ -37,14 +37,21 @@ fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::Pa
                 .map(|ext| ext == "json")
                 .unwrap_or(false)
         })
+        .map(|e| {
+            let mtime = e.metadata().ok().and_then(|m| m.modified().ok());
+            (e.path(), mtime)
+        })
         .collect();
 
-    entries.sort_by_key(|e| std::cmp::Reverse(e.metadata().ok().and_then(|m| m.modified().ok())));
+    entries.sort_by_key(|(_, mtime)| std::cmp::Reverse(*mtime));
 
-    entries.first().map(|e| e.path()).ok_or_else(|| {
-        anyhow::anyhow!(
-            "No plans found in {}. Run 'librarian process' to generate a plan first.",
-            plans_dir.display()
-        )
-    })
+    entries
+        .first()
+        .map(|(path, _)| path.clone())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No plans found in {}. Run 'librarian process' to generate a plan first.",
+                plans_dir.display()
+            )
+        })
 }

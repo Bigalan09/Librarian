@@ -14,11 +14,7 @@ pub async fn run(
         .join("history")
         .join("decisions.jsonl");
 
-    let plan_path = if let Some(name) = &plan_name {
-        super::resolve_plan_path(&plans_dir, name)?
-    } else {
-        super::resolve_plan_path(&plans_dir, "latest")?
-    };
+    let plan_path = super::resolve_plan_path(&plans_dir, plan_name.as_deref().unwrap_or("latest"))?;
 
     if !plan_path.exists() {
         anyhow::bail!(
