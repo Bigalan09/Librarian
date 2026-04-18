@@ -42,7 +42,9 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+pub(crate) fn most_recent_applied(
+    plans_dir: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
     if !plans_dir.exists() {
         anyhow::bail!(
             "No plans directory found at {}. Run 'librarian process' to create a plan first.",
@@ -71,4 +73,66 @@ fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path:
             "No applied plans found in {}. Only plans with status 'Applied' can be rolled back.",
             plans_dir.display()
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_plan(name: &str) -> Plan {
+        Plan::new(
+            name,
+            vec![PathBuf::from("/tmp/inbox")],
+            PathBuf::from("/tmp/dest"),
+        )
+    }
+
+    #[test]
+    fn most_recent_applied_nonexistent_dir() {
+        let result = most_recent_applied(std::path::Path::new("/nonexistent/plans"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No plans directory")
+        );
+    }
+
+    #[test]
+    fn most_recent_applied_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = most_recent_applied(dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No applied plans"));
+    }
+
+    #[test]
+    fn most_recent_applied_skips_draft_plans() {
+        let dir = tempfile::tempdir().unwrap();
+        // Draft plan should be skipped
+        let plan = make_plan("draft-plan");
+        plan.save(dir.path()).unwrap();
+
+        let result = most_recent_applied(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn most_recent_applied_finds_applied_plan() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let plan = make_plan("applied-plan");
+        plan.save(dir.path()).unwrap();
+
+        // Load, modify status, re-save
+        let plan_path = dir.path().join(format!("{}.json", plan.id));
+        let json = std::fs::read_to_string(&plan_path).unwrap();
+        let modified = json.replace("\"draft\"", "\"applied\"");
+        std::fs::write(&plan_path, modified).unwrap();
+
+        let result = most_recent_applied(dir.path()).unwrap();
+        assert!(result.to_string_lossy().contains(&plan.id));
+    }
 }

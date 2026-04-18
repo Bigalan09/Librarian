@@ -82,7 +82,7 @@ pub async fn run(
     Ok(())
 }
 
-fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+pub(crate) fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
     if !plans_dir.exists() {
         anyhow::bail!("No plans directory found. Run 'librarian process' first.");
     }
@@ -105,4 +105,75 @@ fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::Pa
             plans_dir.display()
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_plan(name: &str) -> Plan {
+        Plan::new(
+            name,
+            vec![PathBuf::from("/tmp/inbox")],
+            PathBuf::from("/tmp/dest"),
+        )
+    }
+
+    #[test]
+    fn most_recent_plan_nonexistent_dir() {
+        let result = most_recent_plan(std::path::Path::new("/nonexistent/plans"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No plans directory")
+        );
+    }
+
+    #[test]
+    fn most_recent_plan_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = most_recent_plan(dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No plans found"));
+    }
+
+    #[test]
+    fn most_recent_plan_ignores_non_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "not a plan").unwrap();
+        let result = most_recent_plan(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn most_recent_plan_returns_json_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = make_plan("test-plan");
+        plan.save(dir.path()).unwrap();
+
+        let result = most_recent_plan(dir.path()).unwrap();
+        assert!(result.extension().unwrap() == "json");
+    }
+
+    #[test]
+    fn most_recent_plan_picks_newest() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let p1 = make_plan("plan-a");
+        p1.save(dir.path()).unwrap();
+
+        // Small sleep to ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let p2 = make_plan("plan-b");
+        p2.save(dir.path()).unwrap();
+
+        let result = most_recent_plan(dir.path()).unwrap();
+        let filename = result.file_name().unwrap().to_string_lossy();
+        // Should be the most recently saved (p2)
+        assert!(filename.contains(&p2.id));
+    }
 }
