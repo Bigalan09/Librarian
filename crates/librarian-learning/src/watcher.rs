@@ -183,4 +183,62 @@ mod tests {
         let inbox = detect_source_inbox(path);
         assert_eq!(inbox, "Downloads");
     }
+
+    #[test]
+    fn detect_source_inbox_desktop() {
+        let path = Path::new("/Users/me/Desktop/screenshot.png");
+        let inbox = detect_source_inbox(path);
+        assert_eq!(inbox, "Desktop");
+    }
+
+    #[test]
+    fn detect_source_inbox_nested_downloads() {
+        let path = Path::new("/Users/me/Downloads/subdir/file.txt");
+        let inbox = detect_source_inbox(path);
+        assert_eq!(inbox, "Downloads");
+    }
+
+    #[test]
+    fn hash_file_returns_hex() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.bin");
+        std::fs::write(&file, b"binary content").unwrap();
+
+        let hash = hash_file(&file).unwrap();
+        assert_eq!(hash.len(), 64); // blake3 hex is 64 chars
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn hash_file_nonexistent_errors() {
+        let result = hash_file(Path::new("/nonexistent/file.bin"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_corrections_with_no_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let watcher = CorrectionWatcher::new(&[dir.path().to_path_buf()]).unwrap();
+
+        let manifest = HashMap::new();
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn watcher_watch_dirs_returns_configured_dirs() {
+        let dir1 = tempfile::tempdir().unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+
+        let watcher =
+            CorrectionWatcher::new(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()])
+                .unwrap();
+
+        assert_eq!(watcher.watch_dirs().len(), 2);
+    }
 }

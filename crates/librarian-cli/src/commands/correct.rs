@@ -166,10 +166,8 @@ mod tests {
             inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
             ..Default::default()
         };
-        let result = detect_source_inbox(
-            std::path::Path::new("/other/path/Uploads/file.txt"),
-            &cfg,
-        );
+        let result =
+            detect_source_inbox(std::path::Path::new("/other/path/Uploads/file.txt"), &cfg);
         assert_eq!(result, "Uploads");
     }
 
@@ -179,10 +177,7 @@ mod tests {
             inbox_folders: vec![],
             ..Default::default()
         };
-        let result = detect_source_inbox(
-            std::path::Path::new("/some/dir/file.txt"),
-            &cfg,
-        );
+        let result = detect_source_inbox(std::path::Path::new("/some/dir/file.txt"), &cfg);
         assert_eq!(result, "dir");
     }
 
@@ -195,10 +190,8 @@ mod tests {
             ],
             ..Default::default()
         };
-        let result = detect_source_inbox(
-            std::path::Path::new("/home/user/Desktop/photo.jpg"),
-            &cfg,
-        );
+        let result =
+            detect_source_inbox(std::path::Path::new("/home/user/Desktop/photo.jpg"), &cfg);
         assert_eq!(result, "Desktop");
     }
 

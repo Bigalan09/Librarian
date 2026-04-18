@@ -33,7 +33,9 @@ fn help_flag() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Organise files using rules and AI"));
+        .stdout(predicate::str::contains(
+            "Organise files using rules and AI",
+        ));
 }
 
 #[test]
@@ -51,7 +53,9 @@ fn help_for_apply() {
         .args(["apply", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Execute a previously generated plan"));
+        .stdout(predicate::str::contains(
+            "Execute a previously generated plan",
+        ));
 }
 
 #[test]
@@ -816,7 +820,10 @@ fn plans_show_after_process() {
 
     let config = format!(
         "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(), dest.display(), dest.display(), dest.display(),
+        inbox.display(),
+        dest.display(),
+        dest.display(),
+        dest.display(),
     );
     std::fs::write(home.join("config.yaml"), &config).unwrap();
     std::fs::write(home.join("rules.yaml"), "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n").unwrap();
@@ -825,7 +832,13 @@ fn plans_show_after_process() {
 
     // Process
     librarian()
-        .args(["process", "--source", inbox.to_str().unwrap(), "--destination", dest.to_str().unwrap()])
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
         .env("HOME", dir.path())
         .assert()
         .success();
@@ -835,7 +848,12 @@ fn plans_show_after_process() {
         .unwrap()
         .filter_map(|e| e.ok())
         .collect();
-    let plan_name = plan_files[0].path().file_stem().unwrap().to_string_lossy().to_string();
+    let plan_name = plan_files[0]
+        .path()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
 
     // Show plan
     librarian()
@@ -883,7 +901,9 @@ fn review_no_needs_review_folder() {
         .env("HOME", dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("NeedsReview folder does not exist"));
+        .stdout(predicate::str::contains(
+            "NeedsReview folder does not exist",
+        ));
 }
 
 #[test]
@@ -927,7 +947,10 @@ fn apply_dry_run_does_not_move_files() {
 
     let config = format!(
         "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(), dest.display(), dest.display(), dest.display(),
+        inbox.display(),
+        dest.display(),
+        dest.display(),
+        dest.display(),
     );
     std::fs::write(home.join("config.yaml"), &config).unwrap();
     std::fs::write(home.join("rules.yaml"), "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n").unwrap();
@@ -936,7 +959,13 @@ fn apply_dry_run_does_not_move_files() {
 
     // Process
     librarian()
-        .args(["process", "--source", inbox.to_str().unwrap(), "--destination", dest.to_str().unwrap()])
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
         .env("HOME", dir.path())
         .assert()
         .success();
@@ -945,7 +974,12 @@ fn apply_dry_run_does_not_move_files() {
         .unwrap()
         .filter_map(|e| e.ok())
         .collect();
-    let plan_name = plan_files[0].path().file_stem().unwrap().to_string_lossy().to_string();
+    let plan_name = plan_files[0]
+        .path()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
 
     // Dry run
     librarian()
