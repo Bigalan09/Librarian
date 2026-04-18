@@ -166,9 +166,11 @@ pub async fn run(
     // Scan each source folder
     let mut all_entries = Vec::new();
     let scan_start = std::time::Instant::now();
+    let scan_pb = crate::output::create_scan_progress(sources.len() as u64);
     for src in &sources {
         if !src.exists() {
             tracing::warn!("source folder does not exist: {}", src.display());
+            scan_pb.inc(1);
             continue;
         }
         let inbox_name = src
@@ -176,6 +178,7 @@ pub async fn run(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "unknown".to_owned());
 
+        scan_pb.set_message(format!("Scanning {inbox_name}"));
         let ignore_engine = IgnoreEngine::new(src, None)?;
         let mut entries = walker::scan_directory(
             src,
@@ -194,7 +197,9 @@ pub async fn run(
         );
 
         all_entries.extend(entries);
+        scan_pb.inc(1);
     }
+    scan_pb.finish_and_clear();
 
     tracing::info!(
         elapsed_ms = scan_start.elapsed().as_millis() as u64,
@@ -226,6 +231,7 @@ pub async fn run(
 
     // Classify each file
     let classify_start = std::time::Instant::now();
+    let classify_pb = crate::output::create_classify_progress(all_entries.len() as u64);
     for entry in &all_entries {
         // Step 1: Rules (deterministic, always first)
         if let Some(rule) = engine.evaluate(entry) {
@@ -349,7 +355,9 @@ pub async fn run(
             });
             stats.skipped += 1;
         }
+        classify_pb.inc(1);
     }
+    classify_pb.finish_and_clear();
 
     tracing::info!(
         elapsed_ms = classify_start.elapsed().as_millis() as u64,
@@ -377,18 +385,8 @@ pub async fn run(
     plan.save(&plans_dir)?;
 
     // Summary
-    println!("\nSummary");
-    println!("-------");
-    println!("Matched rules        {:>5}", plan.stats.rule_matched);
-    println!("AI classified        {:>5}", plan.stats.ai_classified);
-    println!(
-        "Low confidence       {:>5}  -> NeedsReview",
-        plan.stats.needs_review
-    );
-    println!("Skipped (no match)   {:>5}", plan.stats.skipped);
-    println!("Total files          {:>5}", plan.stats.total_files);
-    println!("Existing buckets     {:>5}", existing_buckets.len());
     println!();
+    crate::output::print_summary(&plan.stats);
     println!(
         "Plan saved: {} ({} files, {} moves)",
         plan.name,

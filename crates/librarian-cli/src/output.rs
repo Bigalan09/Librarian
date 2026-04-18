@@ -59,14 +59,6 @@ pub fn create_classify_progress(total: u64) -> ProgressBar {
     pb
 }
 
-/// Create a progress bar for the apply phase.
-pub fn create_apply_progress(total: u64) -> ProgressBar {
-    let pb = ProgressBar::new(total);
-    pb.set_style(bar_style());
-    pb.set_message("Applying");
-    pb
-}
-
 // ---------------------------------------------------------------------------
 // Summary table
 // ---------------------------------------------------------------------------

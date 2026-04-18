@@ -1,7 +1,6 @@
 use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
-#[allow(dead_code)]
 mod output;
 
 #[derive(Parser)]
