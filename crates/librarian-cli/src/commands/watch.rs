@@ -7,15 +7,16 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use librarian_core::config;
 use librarian_core::plan::{Plan, PlanStatus};
 use librarian_learning::CorrectionWatcher;
 
-/// Build a manifest of (file_hash -> destination_path) from applied plans.
+/// Build a manifest of (file_hash -> (destination_path, placement_time)) from applied plans.
 ///
 /// Only includes entries where the destination file still exists on disk
 /// and the hash is non-empty.
-fn build_manifest(plans_dir: &Path) -> anyhow::Result<HashMap<String, PathBuf>> {
+fn build_manifest(plans_dir: &Path) -> anyhow::Result<HashMap<String, (PathBuf, DateTime<Utc>)>> {
     let mut manifest = HashMap::new();
     if !plans_dir.exists() {
         return Ok(manifest);
@@ -24,9 +25,13 @@ fn build_manifest(plans_dir: &Path) -> anyhow::Result<HashMap<String, PathBuf>> 
         if plan.status != PlanStatus::Applied {
             continue;
         }
+        let placement_time = plan.applied_at.unwrap_or(plan.created_at);
         for action in &plan.actions {
             if action.destination_path.exists() && !action.file_hash.is_empty() {
-                manifest.insert(action.file_hash.clone(), action.destination_path.clone());
+                manifest.insert(
+                    action.file_hash.clone(),
+                    (action.destination_path.clone(), placement_time),
+                );
             }
         }
     }
@@ -116,7 +121,8 @@ mod tests {
 
         let manifest = build_manifest(&plans_dir).unwrap();
         assert_eq!(manifest.len(), 1);
-        assert_eq!(manifest.get("abc123").unwrap(), &dest_file);
+        let (path, _time) = manifest.get("abc123").unwrap();
+        assert_eq!(path, &dest_file);
     }
 
     #[test]

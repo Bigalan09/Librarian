@@ -50,14 +50,14 @@ impl CorrectionWatcher {
 
     /// Check for corrections by examining pending filesystem events.
     ///
-    /// Compares events against a manifest of known file hashes -> paths.
+    /// Compares events against a manifest of known file hashes -> (path, placement_time).
     /// If a known file hash appears at a new path, it is treated as a correction
     /// (if within the correction window).
     ///
-    /// `manifest` maps file_hash -> original_path (the path librarian placed it).
+    /// `manifest` maps file_hash -> (original_path, placement_time).
     pub fn check_for_corrections(
         &self,
-        manifest: &HashMap<String, PathBuf>,
+        manifest: &HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)>,
         correction_window_days: u32,
         corrections_path: &Path,
         decisions_path: &Path,
@@ -90,30 +90,28 @@ impl CorrectionWatcher {
                     Err(_) => continue,
                 };
 
-                if let Some(original_path) = manifest.get(&hash) {
+                if let Some((original_path, placement_time)) = manifest.get(&hash) {
                     // File hash matches a known placement but is at a different path
-                    if original_path != path {
-                        let placement_time = Utc::now(); // Approximate; real impl would look up actual placement time
-                        if is_within_correction_window(placement_time, correction_window_days) {
-                            let filetype =
-                                path.extension().map(|e| e.to_string_lossy().to_lowercase());
+                    if original_path != path
+                        && is_within_correction_window(*placement_time, correction_window_days)
+                    {
+                        let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
-                            let source_inbox = detect_source_inbox(original_path);
+                        let source_inbox = detect_source_inbox(original_path);
 
-                            let correction = Correction {
-                                original_path: original_path.clone(),
-                                corrected_path: path.clone(),
-                                file_hash: hash.clone(),
-                                source: CorrectionSource::Watched,
-                                corrected_tags: None,
-                                timestamp: Utc::now(),
-                                source_inbox,
-                                filetype,
-                            };
+                        let correction = Correction {
+                            original_path: original_path.clone(),
+                            corrected_path: path.clone(),
+                            file_hash: hash.clone(),
+                            source: CorrectionSource::Watched,
+                            corrected_tags: None,
+                            timestamp: Utc::now(),
+                            source_inbox,
+                            filetype,
+                        };
 
-                            record_correction(corrections_path, decisions_path, &correction)?;
-                            corrections.push(correction);
-                        }
+                        record_correction(corrections_path, decisions_path, &correction)?;
+                        corrections.push(correction);
                     }
                 }
             }
@@ -196,7 +194,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let watcher = CorrectionWatcher::new(&[dir.path().to_path_buf()]).unwrap();
 
-        let manifest = HashMap::new();
+        let manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> = HashMap::new();
         let corrections_path = dir.path().join("corrections.jsonl");
         let decisions_path = dir.path().join("decisions.jsonl");
 
