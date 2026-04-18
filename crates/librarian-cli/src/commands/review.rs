@@ -172,7 +172,5 @@ pub async fn run() -> anyhow::Result<()> {
 
 /// Hash a file using blake3.
 fn hash_file(path: &std::path::Path) -> anyhow::Result<String> {
-    let data = std::fs::read(path)?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
+    Ok(librarian_core::hasher::hash_file_sync(path)?)
 }

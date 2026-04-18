@@ -4,7 +4,13 @@ use std::path::Path;
 
 use tokio::io::AsyncReadExt;
 
-/// Hash a file using blake3, returning the hex digest.
+/// Hash a file synchronously using blake3, returning the hex digest.
+pub fn hash_file_sync(path: &Path) -> std::io::Result<String> {
+    let data = std::fs::read(path)?;
+    Ok(blake3::hash(&data).to_hex().to_string())
+}
+
+/// Hash a file asynchronously using blake3, returning the hex digest.
 pub async fn hash_file(path: &Path) -> std::io::Result<String> {
     let mut file = tokio::fs::File::open(path).await?;
     let mut hasher = blake3::Hasher::new();

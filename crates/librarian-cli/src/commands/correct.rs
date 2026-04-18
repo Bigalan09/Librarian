@@ -116,10 +116,8 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
 }
 
 /// Hash a file using blake3.
-fn hash_file(path: &PathBuf) -> anyhow::Result<String> {
-    let data = std::fs::read(path)?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
+fn hash_file(path: &std::path::Path) -> anyhow::Result<String> {
+    Ok(librarian_core::hasher::hash_file_sync(path)?)
 }
 
 /// Detect the source inbox name from a file path by comparing against

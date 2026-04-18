@@ -37,13 +37,6 @@ fn bar_style() -> ProgressStyle {
 }
 
 /// Create a progress bar for the scanning phase.
-///
-/// The bar is initialised with `total` steps and pre-labelled "Scanning".
-/// Callers should update the message with the source name once known, e.g.:
-///
-/// ```ignore
-/// pb.set_message(format!("Scanning {source}"));
-/// ```
 pub fn create_scan_progress(total: u64) -> ProgressBar {
     let pb = ProgressBar::new(total);
     pb.set_style(bar_style());
@@ -83,8 +76,10 @@ pub fn print_summary(stats: &PlanStats) {
         "{:<24} {:>5}  -> NeedsReview",
         "Low confidence", stats.needs_review
     );
+    println!("{:<24} {:>5}", "Skipped (no match)", stats.skipped);
     println!("{:<24} {:>5}", "Collisions skipped", stats.collisions);
     println!("{:<24} {:>5}", "Ignored", stats.ignored);
+    println!("{:<24} {:>5}", "Total files", stats.total_files);
 }
 
 #[cfg(test)]

@@ -253,6 +253,7 @@ pub async fn run(
                 reason: Some(format!("matched rule: {}", rule.name)),
             });
             stats.rule_matched += 1;
+            classify_pb.inc(1);
             continue;
         }
 
