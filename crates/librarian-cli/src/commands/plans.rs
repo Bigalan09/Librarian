@@ -32,7 +32,7 @@ pub async fn list() -> anyhow::Result<()> {
 
 pub async fn show(name: &str) -> anyhow::Result<()> {
     let plans_dir = config::librarian_home().join("plans");
-    let plan_path = plans_dir.join(format!("{name}.json"));
+    let plan_path = super::resolve_plan_path(&plans_dir, name)?;
 
     if !plan_path.exists() {
         anyhow::bail!(
@@ -110,7 +110,7 @@ pub async fn clean(max_age_days: u32) -> anyhow::Result<()> {
 
 pub async fn delete(name: &str) -> anyhow::Result<()> {
     let plans_dir = config::librarian_home().join("plans");
-    let plan_path = plans_dir.join(format!("{name}.json"));
+    let plan_path = super::resolve_plan_path(&plans_dir, name)?;
 
     if !plan_path.exists() {
         anyhow::bail!(

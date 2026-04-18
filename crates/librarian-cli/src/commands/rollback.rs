@@ -10,9 +10,13 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
         .join("decisions.jsonl");
 
     let plan_path = if let Some(name) = &plan_name {
-        plans_dir.join(format!("{name}.json"))
+        if name == "latest" {
+            // "latest" for rollback means most recent *applied* plan
+            most_recent_applied(&plans_dir)?
+        } else {
+            super::resolve_plan_path(&plans_dir, name)?
+        }
     } else {
-        // Find most recent applied plan
         most_recent_applied(&plans_dir)?
     };
 
