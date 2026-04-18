@@ -85,7 +85,7 @@ impl CorrectionWatcher {
                 }
 
                 // Hash the file to see if it matches a known placement
-                let hash = match hash_file(path) {
+                let hash = match librarian_core::hasher::hash_file_sync(path) {
                     Ok(h) => h,
                     Err(_) => continue,
                 };
@@ -121,11 +121,6 @@ impl CorrectionWatcher {
 
         Ok(corrections)
     }
-}
-
-/// Hash a file using blake3.
-fn hash_file(path: &Path) -> anyhow::Result<String> {
-    Ok(librarian_core::hasher::hash_file_sync(path)?)
 }
 
 /// Attempt to detect the source inbox from the original path.
@@ -194,23 +189,6 @@ mod tests {
         let path = Path::new("/Users/me/Downloads/subdir/file.txt");
         let inbox = detect_source_inbox(path);
         assert_eq!(inbox, "Downloads");
-    }
-
-    #[test]
-    fn hash_file_returns_hex() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("test.bin");
-        std::fs::write(&file, b"binary content").unwrap();
-
-        let hash = hash_file(&file).unwrap();
-        assert_eq!(hash.len(), 64); // blake3 hex is 64 chars
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn hash_file_nonexistent_errors() {
-        let result = hash_file(Path::new("/nonexistent/file.bin"));
-        assert!(result.is_err());
     }
 
     #[test]

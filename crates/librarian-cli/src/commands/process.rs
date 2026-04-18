@@ -446,12 +446,15 @@ async fn suggest_rename(
     ];
     match provider.chat(messages, 0.1, 64).await {
         Ok(resp) => {
-            let suggestion = resp.content.trim().to_string();
+            let mut suggestion = resp.content.trim().to_string();
             if suggestion.eq_ignore_ascii_case("KEEP") || suggestion == entry.name {
-                None
-            } else {
-                Some(suggestion)
+                return None;
             }
+            // Ensure the LLM preserved the extension
+            if !ext.is_empty() && !suggestion.ends_with(&format!(".{ext}")) {
+                suggestion = format!("{suggestion}.{ext}");
+            }
+            Some(suggestion)
         }
         Err(e) => {
             tracing::debug!("Rename suggestion failed: {e}");
@@ -558,6 +561,16 @@ mod tests {
         let entry = make_entry("file.txt", Some("txt"));
         let result = suggest_rename(&provider, &entry, "Docs").await;
         assert_eq!(result, Some("renamed-file.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_appends_missing_extension() {
+        let provider = MockRenameProvider {
+            response: "clean-report".to_string(),
+        };
+        let entry = make_entry("IMG_4382.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, Some("clean-report.pdf".to_string()));
     }
 
     #[test]

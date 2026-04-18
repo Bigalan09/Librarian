@@ -84,7 +84,7 @@ pub async fn run() -> anyhow::Result<()> {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                let file_hash = hash_file(&path)?;
+                let file_hash = librarian_core::hasher::hash_file_sync(&path)?;
                 let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
@@ -137,7 +137,7 @@ pub async fn run() -> anyhow::Result<()> {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                let file_hash = hash_file(&path)?;
+                let file_hash = librarian_core::hasher::hash_file_sync(&path)?;
                 let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
@@ -168,9 +168,4 @@ pub async fn run() -> anyhow::Result<()> {
 
     println!("Review complete.");
     Ok(())
-}
-
-/// Hash a file using blake3.
-fn hash_file(path: &std::path::Path) -> anyhow::Result<String> {
-    Ok(librarian_core::hasher::hash_file_sync(path)?)
 }

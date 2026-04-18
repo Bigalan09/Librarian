@@ -28,7 +28,7 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
     }
 
     // Find the file in the decision log to get the original placement
-    let file_hash = hash_file(&file)?;
+    let file_hash = librarian_core::hasher::hash_file_sync(&file)?;
     let decisions = read_decisions(&decisions_path)?;
 
     let original_decision = decisions.iter().rev().find(|d| d.file_hash == file_hash);
@@ -113,11 +113,6 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
     Ok(())
 }
 
-/// Hash a file using blake3.
-fn hash_file(path: &std::path::Path) -> anyhow::Result<String> {
-    Ok(librarian_core::hasher::hash_file_sync(path)?)
-}
-
 /// Detect the source inbox name from a file path by comparing against
 /// configured inbox folders.
 fn detect_source_inbox(path: &std::path::Path, cfg: &config::AppConfig) -> String {
@@ -189,33 +184,5 @@ mod tests {
         let result =
             detect_source_inbox(std::path::Path::new("/home/user/Desktop/photo.jpg"), &cfg);
         assert_eq!(result, "Desktop");
-    }
-
-    #[test]
-    fn hash_file_produces_hex_string() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("test.txt");
-        std::fs::write(&file, "hello world").unwrap();
-
-        let hash = hash_file(&file).unwrap();
-        assert!(!hash.is_empty());
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn hash_file_nonexistent_errors() {
-        let result = hash_file(&PathBuf::from("/nonexistent/file.txt"));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn hash_file_deterministic() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("test.txt");
-        std::fs::write(&file, "deterministic content").unwrap();
-
-        let hash1 = hash_file(&file).unwrap();
-        let hash2 = hash_file(&file).unwrap();
-        assert_eq!(hash1, hash2);
     }
 }
