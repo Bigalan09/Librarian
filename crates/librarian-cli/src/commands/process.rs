@@ -463,6 +463,102 @@ async fn suggest_rename(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
+    use librarian_providers::traits::{ChatResponse, ModelInfo, Provider};
+
+    struct MockRenameProvider {
+        response: String,
+    }
+
+    impl Provider for MockRenameProvider {
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: "mock".to_string(),
+            })
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<ChatResponse> {
+            Ok(ChatResponse {
+                content: self.response.clone(),
+                model: "mock".to_string(),
+            })
+        }
+        async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.0]).collect())
+        }
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    fn make_entry(name: &str, ext: Option<&str>) -> FileEntry {
+        FileEntry {
+            path: PathBuf::from(format!("/tmp/{name}")),
+            name: name.to_string(),
+            extension: ext.map(|s| s.to_string()),
+            size_bytes: 100,
+            hash: String::new(),
+            created_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            modified_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            tags: Vec::new(),
+            colour: None,
+            source_inbox: "Downloads".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_new_name() {
+        let provider = MockRenameProvider {
+            response: "clean-report-2025.pdf".to_string(),
+        };
+        let entry = make_entry("IMG_4382.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, Some("clean-report-2025.pdf".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_on_keep() {
+        let provider = MockRenameProvider {
+            response: "KEEP".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_on_keep_lowercase() {
+        let provider = MockRenameProvider {
+            response: "keep".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_when_same_name() {
+        let provider = MockRenameProvider {
+            response: "report.pdf".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_trims_whitespace() {
+        let provider = MockRenameProvider {
+            response: "  renamed-file.txt  \n".to_string(),
+        };
+        let entry = make_entry("file.txt", Some("txt"));
+        let result = suggest_rename(&provider, &entry, "Docs").await;
+        assert_eq!(result, Some("renamed-file.txt".to_string()));
+    }
 
     #[test]
     fn discover_buckets_from_directory() {
