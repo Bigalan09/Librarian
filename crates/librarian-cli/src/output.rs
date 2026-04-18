@@ -86,3 +86,42 @@ pub fn print_summary(stats: &PlanStats) {
     println!("{:<24} {:>5}", "Collisions skipped", stats.collisions);
     println!("{:<24} {:>5}", "Ignored", stats.ignored);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_progress_bar_has_correct_length() {
+        let pb = create_scan_progress(42);
+        assert_eq!(pb.length(), Some(42));
+    }
+
+    #[test]
+    fn classify_progress_bar_has_correct_length() {
+        let pb = create_classify_progress(10);
+        assert_eq!(pb.length(), Some(10));
+    }
+
+    #[test]
+    fn print_summary_does_not_panic() {
+        let stats = PlanStats {
+            total_files: 100,
+            rule_matched: 40,
+            ai_classified: 30,
+            needs_review: 10,
+            collisions: 5,
+            ignored: 15,
+            skipped: 0,
+            limit_reached: false,
+        };
+        // Should not panic
+        print_summary(&stats);
+    }
+
+    #[test]
+    fn print_summary_with_zeros() {
+        let stats = PlanStats::default();
+        print_summary(&stats);
+    }
+}

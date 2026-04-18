@@ -108,3 +108,50 @@ fn write_if_missing(path: &Path, content: &str) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_is_valid_yaml() {
+        let cfg: serde_yaml::Value = serde_yaml::from_str(DEFAULT_CONFIG).unwrap();
+        assert!(cfg.get("inbox_folders").is_some());
+        assert!(cfg.get("destination_root").is_some());
+        assert!(cfg.get("provider").is_some());
+        assert!(cfg.get("thresholds").is_some());
+    }
+
+    #[test]
+    fn default_rules_is_valid_yaml() {
+        let rules: serde_yaml::Value = serde_yaml::from_str(DEFAULT_RULES).unwrap();
+        assert!(rules.get("rules").is_some());
+    }
+
+    #[test]
+    fn default_ignore_contains_common_patterns() {
+        assert!(DEFAULT_IGNORE.contains("*.tmp"));
+        assert!(DEFAULT_IGNORE.contains("*.swp"));
+        assert!(DEFAULT_IGNORE.contains("*.crdownload"));
+    }
+
+    #[test]
+    fn write_if_missing_creates_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new.txt");
+
+        write_if_missing(&path, "content").unwrap();
+        assert!(path.exists());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "content");
+    }
+
+    #[test]
+    fn write_if_missing_skips_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("existing.txt");
+        std::fs::write(&path, "original").unwrap();
+
+        write_if_missing(&path, "overwrite").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
+    }
+}

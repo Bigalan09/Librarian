@@ -141,3 +141,92 @@ fn detect_source_inbox(path: &std::path::Path, cfg: &config::AppConfig) -> Strin
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn detect_inbox_from_matching_path() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(
+            std::path::Path::new("/home/user/Downloads/invoice.pdf"),
+            &cfg,
+        );
+        assert_eq!(result, "Downloads");
+    }
+
+    #[test]
+    fn detect_inbox_falls_back_to_parent() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(
+            std::path::Path::new("/other/path/Uploads/file.txt"),
+            &cfg,
+        );
+        assert_eq!(result, "Uploads");
+    }
+
+    #[test]
+    fn detect_inbox_no_inboxes_configured() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(
+            std::path::Path::new("/some/dir/file.txt"),
+            &cfg,
+        );
+        assert_eq!(result, "dir");
+    }
+
+    #[test]
+    fn detect_inbox_multiple_inboxes() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![
+                PathBuf::from("/home/user/Downloads"),
+                PathBuf::from("/home/user/Desktop"),
+            ],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(
+            std::path::Path::new("/home/user/Desktop/photo.jpg"),
+            &cfg,
+        );
+        assert_eq!(result, "Desktop");
+    }
+
+    #[test]
+    fn hash_file_produces_hex_string() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "hello world").unwrap();
+
+        let hash = hash_file(&file).unwrap();
+        assert!(!hash.is_empty());
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn hash_file_nonexistent_errors() {
+        let result = hash_file(&PathBuf::from("/nonexistent/file.txt"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hash_file_deterministic() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "deterministic content").unwrap();
+
+        let hash1 = hash_file(&file).unwrap();
+        let hash2 = hash_file(&file).unwrap();
+        assert_eq!(hash1, hash2);
+    }
+}
