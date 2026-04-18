@@ -2,12 +2,44 @@
 
 use std::path::PathBuf;
 
+use librarian_classifier::pipeline::{ClassificationPipeline, EmbeddingCache};
+use librarian_classifier::qdrant::InMemoryVectorStore;
+use librarian_classifier::{ConfidenceGate, VectorStore};
 use librarian_core::IgnoreEngine;
 use librarian_core::config::{self, ProviderType};
 use librarian_core::decision::ClassificationMethod;
 use librarian_core::file_entry::FinderColour;
 use librarian_core::plan::{ActionType, Plan, PlanStats, PlannedAction};
 use librarian_core::walker;
+
+/// Scan the destination root for existing top-level folder names.
+///
+/// These are passed to the LLM and embedding tiers as context so the AI
+/// knows what buckets already exist and can prefer them over inventing new ones.
+fn discover_buckets(dest_root: &std::path::Path) -> Vec<String> {
+    let mut buckets = Vec::new();
+    if !dest_root.exists() {
+        return buckets;
+    }
+
+    let Ok(entries) = std::fs::read_dir(dest_root) else {
+        return buckets;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir()
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && !name.starts_with('.')
+            && !name.starts_with('_')
+        {
+            buckets.push(name.to_string());
+        }
+    }
+
+    buckets.sort();
+    buckets
+}
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
@@ -98,6 +130,39 @@ pub async fn run(
     let embed_cache =
         librarian_providers::cache::EmbeddingCache::load(&cache_path).unwrap_or_default();
 
+    // Load vector store (in-memory centroid store with msgpack persistence)
+    let centroid_path = config::librarian_home()
+        .join("cache")
+        .join("centroids.msgpack");
+    let mut vector_store = InMemoryVectorStore::load(&centroid_path).unwrap_or_else(|e| {
+        tracing::warn!("Failed to load centroid store: {e}. Starting empty.");
+        InMemoryVectorStore::new(centroid_path.clone())
+    });
+
+    // Discover existing buckets from destination directory structure
+    let mut existing_buckets = discover_buckets(&dest_root);
+
+    // Merge in bucket names from the vector store (centroids may know about
+    // buckets that no longer have a physical directory)
+    for bucket in vector_store.all_buckets() {
+        if !existing_buckets.contains(&bucket) {
+            existing_buckets.push(bucket);
+        }
+    }
+    existing_buckets.sort();
+
+    tracing::info!(
+        bucket_count = existing_buckets.len(),
+        "Discovered existing buckets: {:?}",
+        existing_buckets
+    );
+
+    // Load few-shot examples from correction history
+    let corrections_path = config::librarian_home()
+        .join("history")
+        .join("corrections.jsonl");
+    let fewshot_count = cfg.fewshot_count as usize;
+
     // Scan each source folder
     let mut all_entries = Vec::new();
     let scan_start = std::time::Instant::now();
@@ -153,7 +218,11 @@ pub async fn run(
     };
 
     // Confidence gate
-    let gate = librarian_classifier::ConfidenceGate::new(cfg.thresholds.clone());
+    let gate = ConfidenceGate::new(cfg.thresholds.clone());
+
+    // Pipeline embedding cache (separate from the provider-level cache;
+    // this one caches bucket-name embeddings during classification)
+    let mut pipeline_cache = EmbeddingCache::new();
 
     // Classify each file
     let classify_start = std::time::Instant::now();
@@ -181,88 +250,87 @@ pub async fn run(
             continue;
         }
 
-        // Step 2-5: AI classification (if provider available)
+        // Steps 2-5: AI classification (if provider available)
         if let Some(ref router) = ai_provider {
             let provider = router.active()?;
 
-            // Step 2: Filename embedding
-            let _filename_result =
-                librarian_classifier::embedding::embed_text_dyn(provider, &entry.name).await;
+            // Select few-shot examples scoped to this file's inbox + filetype
+            let filetype = entry.extension.as_deref();
+            let few_shot_examples = librarian_learning::select_examples(
+                &corrections_path,
+                &entry.source_inbox,
+                filetype,
+                fewshot_count,
+            )
+            .unwrap_or_else(|e| {
+                tracing::debug!("Failed to load few-shot examples: {e}");
+                Vec::new()
+            });
 
-            // TODO: compare against bucket centroids from Qdrant
-            // For now, fall through to LLM classifier
-
-            // Step 4: LLM classifier
-            let llm_result = librarian_classifier::llm::LlmClassifier::classify_dyn(
-                provider,
+            let result = ClassificationPipeline::classify(
                 entry,
-                &[], // existing buckets — will be populated from Qdrant
-                &[], // few-shot examples — will come from learning layer
+                &engine,
+                provider,
+                &gate,
+                &mut pipeline_cache,
+                &existing_buckets,
+                &few_shot_examples,
+                Some(&vector_store),
             )
             .await;
 
-            match llm_result {
-                Ok(result) => {
-                    let gate_result =
-                        gate.check_llm_confidence(result.confidence, &result.destination);
-                    match gate_result {
-                        librarian_classifier::GateResult::Accept { destination, .. } => {
-                            let destination_path = dest_root.join(&destination).join(&entry.name);
-                            plan.actions.push(PlannedAction {
-                                file_hash: entry.hash.clone(),
-                                source_path: entry.path.clone(),
-                                destination_path,
-                                action_type: ActionType::Move,
-                                classification_method: ClassificationMethod::Llm,
-                                confidence: Some(result.confidence),
-                                tags: result.tags,
-                                colour: None,
-                                rename_to: None,
-                                original_name: None,
-                                reason: Some(result.reason),
-                            });
-                            stats.ai_classified += 1;
-                        }
-                        librarian_classifier::GateResult::NeedsReview { reason } => {
-                            let destination_path = cfg.needs_review_path.join(&entry.name);
-                            plan.actions.push(PlannedAction {
-                                file_hash: entry.hash.clone(),
-                                source_path: entry.path.clone(),
-                                destination_path,
-                                action_type: ActionType::NeedsReview,
-                                classification_method: ClassificationMethod::Llm,
-                                confidence: Some(result.confidence),
-                                tags: vec!["needs-review".to_owned()],
-                                colour: Some(FinderColour::Yellow),
-                                rename_to: None,
-                                original_name: None,
-                                reason: Some(reason),
-                            });
-                            stats.needs_review += 1;
-                        }
-                        librarian_classifier::GateResult::Escalate => {
-                            // Should not happen for LLM tier — treat as needs-review
-                            stats.needs_review += 1;
-                        }
-                    }
+            // Skip rule results (already handled above), process AI results
+            if result.method == ClassificationMethod::Rule {
+                // Shouldn't happen since rules already matched above, but be safe
+                continue;
+            }
+
+            if result.needs_review {
+                let destination_path = cfg.needs_review_path.join(&entry.name);
+                plan.actions.push(PlannedAction {
+                    file_hash: entry.hash.clone(),
+                    source_path: entry.path.clone(),
+                    destination_path,
+                    action_type: ActionType::NeedsReview,
+                    classification_method: result.method,
+                    confidence: result.confidence,
+                    tags: vec!["needs-review".to_owned()],
+                    colour: Some(FinderColour::Yellow),
+                    rename_to: None,
+                    original_name: None,
+                    reason: result.reason,
+                });
+                stats.needs_review += 1;
+            } else {
+                let destination_path = dest_root.join(&result.destination).join(&entry.name);
+
+                // Update vector store with the classification result's embedding
+                if let Some(ref embedding) = result.filename_embedding {
+                    let ft = entry.extension.as_deref().unwrap_or("unknown");
+                    let bucket = result.destination.to_str().unwrap_or("unknown");
+                    vector_store.upsert(
+                        &entry.source_inbox,
+                        ft,
+                        bucket,
+                        embedding,
+                        0.3, // learning rate for gradual drift
+                    );
                 }
-                Err(e) => {
-                    tracing::warn!("LLM classification failed for {}: {e}", entry.name);
-                    stats.skipped += 1;
-                    plan.actions.push(PlannedAction {
-                        file_hash: entry.hash.clone(),
-                        source_path: entry.path.clone(),
-                        destination_path: PathBuf::new(),
-                        action_type: ActionType::Skip,
-                        classification_method: ClassificationMethod::None,
-                        confidence: None,
-                        tags: Vec::new(),
-                        colour: None,
-                        rename_to: None,
-                        original_name: None,
-                        reason: Some(format!("AI classification error: {e}")),
-                    });
-                }
+
+                plan.actions.push(PlannedAction {
+                    file_hash: entry.hash.clone(),
+                    source_path: entry.path.clone(),
+                    destination_path,
+                    action_type: ActionType::Move,
+                    classification_method: result.method,
+                    confidence: result.confidence,
+                    tags: result.tags,
+                    colour: result.colour,
+                    rename_to: None,
+                    original_name: None,
+                    reason: result.reason,
+                });
+                stats.ai_classified += 1;
             }
         } else {
             // No AI provider — skip unmatched files
@@ -296,6 +364,11 @@ pub async fn run(
         tracing::warn!("failed to save embedding cache: {e}");
     }
 
+    // Save vector store (centroid updates from this run)
+    if let Err(e) = vector_store.save() {
+        tracing::warn!("failed to save vector store: {e}");
+    }
+
     plan.stats = stats;
 
     // Save plan
@@ -314,6 +387,7 @@ pub async fn run(
     );
     println!("Skipped (no match)   {:>5}", plan.stats.skipped);
     println!("Total files          {:>5}", plan.stats.total_files);
+    println!("Existing buckets     {:>5}", existing_buckets.len());
     println!();
     println!(
         "Plan saved: {} ({} files, {} moves)",
@@ -324,4 +398,40 @@ pub async fn run(
     println!("Run 'librarian apply --plan {}' to execute.", plan.name);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discover_buckets_from_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Create some subdirectories
+        std::fs::create_dir(root.join("Documents")).unwrap();
+        std::fs::create_dir(root.join("Photos")).unwrap();
+        std::fs::create_dir(root.join("Invoices")).unwrap();
+        std::fs::create_dir(root.join(".hidden")).unwrap();
+        std::fs::create_dir(root.join("_Trash")).unwrap();
+        // Create a file (should be ignored)
+        std::fs::write(root.join("readme.txt"), "hi").unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(buckets, vec!["Documents", "Invoices", "Photos"]);
+    }
+
+    #[test]
+    fn discover_buckets_nonexistent_dir() {
+        let buckets = discover_buckets(std::path::Path::new("/nonexistent/path"));
+        assert!(buckets.is_empty());
+    }
+
+    #[test]
+    fn discover_buckets_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let buckets = discover_buckets(dir.path());
+        assert!(buckets.is_empty());
+    }
 }

@@ -8,4 +8,5 @@ pub mod review;
 pub mod rollback;
 pub mod rules;
 pub mod status;
+pub mod suggest;
 pub mod watch;
