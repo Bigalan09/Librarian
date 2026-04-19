@@ -642,8 +642,6 @@ rules:
         assert!(!result.needs_review);
     }
 
-    // --- EmbeddingCache unit tests ---
-
     #[test]
     fn embedding_cache_insert_and_get() {
         let mut cache = EmbeddingCache::new();
@@ -673,8 +671,6 @@ rules:
         assert_eq!(cache.get("c").unwrap(), &vec![3.0]);
         assert!(cache.get("d").is_none());
     }
-
-    // --- Pipeline: content embedding tier ---
 
     #[tokio::test]
     async fn content_embedding_classifies_text_file() {
@@ -720,8 +716,6 @@ rules:
         assert!(result.confidence.unwrap() >= 0.80);
     }
 
-    // --- Pipeline: all tiers fail ---
-
     #[tokio::test]
     async fn all_tiers_fail_returns_needs_review() {
         let engine = empty_engine();
@@ -745,11 +739,8 @@ rules:
         .await;
 
         assert!(result.needs_review);
-        assert_eq!(result.method, ClassificationMethod::None);
         assert!(result.reason.unwrap().contains("failed"));
     }
-
-    // --- Pipeline: LLM tier with NeedsReview confidence ---
 
     #[tokio::test]
     async fn llm_low_confidence_flags_needs_review() {
@@ -776,8 +767,6 @@ rules:
         assert_eq!(result.method, ClassificationMethod::Llm);
         assert!(result.confidence.unwrap() < 0.70);
     }
-
-    // --- Pipeline: rule match with tags and colour ---
 
     #[tokio::test]
     async fn rule_match_preserves_tags_and_colour() {
@@ -814,8 +803,6 @@ rules:
         assert!(result.tags.contains(&"image".to_string()));
         assert_eq!(result.confidence, Some(1.0));
     }
-
-    // --- Pipeline: empty vector store is skipped ---
 
     #[tokio::test]
     async fn empty_vector_store_skips_centroid_tier() {

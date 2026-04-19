@@ -115,8 +115,6 @@ mod tests {
         );
     }
 
-    // --- Mock provider for async embedding tests ---
-
     struct MockEmbedProvider {
         embedding: Vec<f32>,
     }

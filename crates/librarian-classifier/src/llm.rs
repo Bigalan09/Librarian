@@ -330,8 +330,6 @@ mod tests {
         assert!(parse_llm_response(raw).is_err());
     }
 
-    // --- Mock provider for async classify tests ---
-
     use librarian_providers::traits::{ChatResponse, ModelInfo};
 
     struct MockChatProvider {

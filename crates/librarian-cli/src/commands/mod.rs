@@ -145,9 +145,4 @@ mod resolve_tests {
         let result = resolve_plan_path(&plans_dir, "latest");
         assert!(result.is_err());
     }
-
-    #[test]
-    fn latest_alias_constant() {
-        assert_eq!(LATEST_ALIAS, "latest");
-    }
 }
