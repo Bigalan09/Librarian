@@ -61,6 +61,7 @@ pub async fn run(check_only: bool) -> anyhow::Result<()> {
     println!("\nInstalling {latest} via cargo...");
 
     let status = Command::new("cargo")
+        .env("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
         .args([
             "install",
             "--git",
