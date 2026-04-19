@@ -603,4 +603,74 @@ mod tests {
         let buckets = discover_buckets(dir.path());
         assert!(buckets.is_empty());
     }
+
+    #[tokio::test]
+    async fn suggest_rename_no_extension() {
+        let provider = MockRenameProvider {
+            response: "cleaned-name".to_string(),
+        };
+        let entry = make_entry("mystery_file", None);
+        let result = suggest_rename(&provider, &entry, "Misc").await;
+        // No extension, so no ".ext" appended
+        assert_eq!(result, Some("cleaned-name".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_provider_error_returns_none() {
+        struct FailingProvider;
+
+        impl Provider for FailingProvider {
+            async fn validate(&self) -> anyhow::Result<ModelInfo> {
+                Ok(ModelInfo {
+                    id: "mock".to_string(),
+                })
+            }
+            async fn chat(
+                &self,
+                _messages: Vec<ChatMessage>,
+                _temperature: f64,
+                _max_tokens: u32,
+            ) -> anyhow::Result<ChatResponse> {
+                anyhow::bail!("connection refused")
+            }
+            async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+                Ok(vec![])
+            }
+            fn name(&self) -> &str {
+                "failing"
+            }
+        }
+
+        let provider = FailingProvider;
+        let entry = make_entry("file.txt", Some("txt"));
+        let result = suggest_rename(&provider, &entry, "Docs").await;
+        assert_eq!(result, None, "provider error should return None");
+    }
+
+    #[test]
+    fn discover_buckets_ignores_files_and_dotfiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("Valid")).unwrap();
+        std::fs::write(root.join("file.txt"), "not a dir").unwrap();
+        std::fs::create_dir(root.join(".config")).unwrap();
+        std::fs::create_dir(root.join("_backup")).unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(buckets, vec!["Valid"]);
+    }
+
+    #[test]
+    fn discover_buckets_returns_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("Zebra")).unwrap();
+        std::fs::create_dir(root.join("Alpha")).unwrap();
+        std::fs::create_dir(root.join("Middle")).unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(buckets, vec!["Alpha", "Middle", "Zebra"]);
+    }
 }

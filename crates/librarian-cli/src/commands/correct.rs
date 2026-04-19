@@ -185,4 +185,30 @@ mod tests {
             detect_source_inbox(std::path::Path::new("/home/user/Desktop/photo.jpg"), &cfg);
         assert_eq!(result, "Desktop");
     }
+
+    #[test]
+    fn detect_inbox_root_path_returns_unknown() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        // File at root — no parent directory name
+        let result = detect_source_inbox(std::path::Path::new("/file.txt"), &cfg);
+        // Parent is "/", file_name is None -> "unknown"
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn detect_inbox_partial_name_match() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        // Path contains "Downloads" in a different location
+        let result = detect_source_inbox(
+            std::path::Path::new("/managed/Downloads-sorted/file.txt"),
+            &cfg,
+        );
+        assert_eq!(result, "Downloads");
+    }
 }

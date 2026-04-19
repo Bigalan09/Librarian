@@ -291,4 +291,156 @@ mod tests {
         let result = provider.validate().await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn validate_returns_error_on_non_success() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let provider = LmStudio::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "model",
+            "embed",
+        );
+
+        let err = provider.validate().await.unwrap_err();
+        assert!(err.to_string().contains("500"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn validate_no_models_loaded() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let provider = LmStudio::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "model",
+            "embed",
+        );
+
+        let err = provider.validate().await.unwrap_err();
+        assert!(err.to_string().contains("No models loaded"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn chat_returns_error_on_non_success() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(500)
+            .with_body(r#"{"error":"server error"}"#)
+            .create_async()
+            .await;
+
+        let provider = LmStudio::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "model",
+            "embed",
+        );
+
+        let msgs = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let err = provider.chat(msgs, 0.7, 256).await.unwrap_err();
+        assert!(err.to_string().contains("500"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn chat_empty_choices_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"choices":[],"model":"test"}"#)
+            .create_async()
+            .await;
+
+        let provider = LmStudio::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "model",
+            "embed",
+        );
+
+        let msgs = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let err = provider.chat(msgs, 0.7, 256).await.unwrap_err();
+        assert!(err.to_string().contains("No choices"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn embed_returns_error_on_non_success() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(400)
+            .with_body(r#"{"error":"bad request"}"#)
+            .create_async()
+            .await;
+
+        let provider = LmStudio::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "model",
+            "embed",
+        );
+
+        let err = provider.embed(vec!["test".to_string()]).await.unwrap_err();
+        assert!(err.to_string().contains("400"));
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn name_returns_lmstudio() {
+        let provider = LmStudio::new(None, None, None);
+        assert_eq!(provider.name(), "lmstudio");
+    }
+
+    #[test]
+    fn new_uses_defaults() {
+        let provider = LmStudio::new(None, None, None);
+        assert_eq!(provider.base_url, "http://localhost:1234/v1");
+        assert_eq!(provider.llm_model, "default");
+        assert_eq!(provider.embed_model, "default");
+    }
+
+    #[test]
+    fn new_trims_trailing_slash() {
+        let provider = LmStudio::new(Some("http://localhost:1234/v1/"), None, None);
+        assert_eq!(provider.base_url, "http://localhost:1234/v1");
+    }
+
+    #[test]
+    fn new_accepts_custom_values() {
+        let provider = LmStudio::new(
+            Some("http://myhost:5000/v1"),
+            Some("llama-3"),
+            Some("nomic-embed"),
+        );
+        assert_eq!(provider.base_url, "http://myhost:5000/v1");
+        assert_eq!(provider.llm_model, "llama-3");
+        assert_eq!(provider.embed_model, "nomic-embed");
+    }
 }
