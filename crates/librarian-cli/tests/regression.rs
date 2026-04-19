@@ -4,9 +4,9 @@
 //! - Unicode filenames
 //! - Empty directories
 //! - Large plan files
-//! - Concurrent plan operations
 //! - Symlink handling
-//! - Path traversal safety
+//! - Plan status transitions
+//! - Decision log integrity
 
 use std::path::PathBuf;
 

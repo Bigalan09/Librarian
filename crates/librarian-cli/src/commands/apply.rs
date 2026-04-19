@@ -19,14 +19,12 @@ pub async fn run(
         plan_name.as_deref().unwrap_or(super::LATEST_ALIAS),
     )?;
 
-    if !plan_path.exists() {
-        anyhow::bail!(
+    let mut plan = Plan::load(&plan_path).map_err(|_| {
+        anyhow::anyhow!(
             "Plan not found at {}. Run 'librarian plans list' to see available plans.",
             plan_path.display()
-        );
-    }
-
-    let mut plan = Plan::load(&plan_path)?;
+        )
+    })?;
 
     if dry_run {
         println!("Dry run — showing what would happen:");

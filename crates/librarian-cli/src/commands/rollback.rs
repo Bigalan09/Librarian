@@ -20,14 +20,12 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
         most_recent_applied(&plans_dir)?
     };
 
-    if !plan_path.exists() {
-        anyhow::bail!(
+    let mut plan = Plan::load(&plan_path).map_err(|_| {
+        anyhow::anyhow!(
             "Plan not found at {}. Run 'librarian plans list' to see available plans.",
             plan_path.display()
-        );
-    }
-
-    let mut plan = Plan::load(&plan_path)?;
+        )
+    })?;
 
     if plan.status != PlanStatus::Applied {
         anyhow::bail!(

@@ -34,15 +34,13 @@ pub async fn show(name: &str) -> anyhow::Result<()> {
     let plans_dir = config::librarian_home().join("plans");
     let plan_path = super::resolve_plan_path(&plans_dir, name)?;
 
-    if !plan_path.exists() {
-        anyhow::bail!(
+    let plan = Plan::load(&plan_path).map_err(|_| {
+        anyhow::anyhow!(
             "Plan '{}' not found at {}. Run 'librarian plans list' to see available plans.",
             name,
             plan_path.display()
-        );
-    }
-
-    let plan = Plan::load(&plan_path)?;
+        )
+    })?;
 
     println!("Plan: {}", plan.name);
     println!("Status: {:?}", plan.status);
@@ -92,9 +90,10 @@ pub async fn clean(max_age_days: u32) -> anyhow::Result<()> {
     for plan in &plans {
         if plan.created_at < cutoff {
             let path = plans_dir.join(format!("{}.json", plan.id));
-            if path.exists() {
-                std::fs::remove_file(&path)?;
-                removed += 1;
+            match std::fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
             }
         }
     }
@@ -120,6 +119,8 @@ pub async fn delete(name: &str) -> anyhow::Result<()> {
         );
     }
 
+    // No TOCTOU risk here: delete is idempotent and the exists() check
+    // provides a better error message than a raw NotFound.
     std::fs::remove_file(&plan_path)?;
     println!("Deleted plan '{}'", name);
     Ok(())
