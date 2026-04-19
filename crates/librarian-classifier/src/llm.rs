@@ -278,6 +278,7 @@ mod tests {
             tags: vec!["important".to_string()],
             colour: None,
             source_inbox: "Downloads".to_string(),
+            is_dir: false,
         };
 
         let prompt = build_user_prompt(&entry);
@@ -304,6 +305,7 @@ mod tests {
             tags: Vec::new(),
             colour: None,
             source_inbox: "Desktop".to_string(),
+            is_dir: false,
         };
 
         let prompt = build_user_prompt(&entry);
@@ -398,6 +400,7 @@ mod tests {
             tags: Vec::new(),
             colour: None,
             source_inbox: "Downloads".to_string(),
+            is_dir: false,
         }
     }
 

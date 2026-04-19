@@ -402,6 +402,7 @@ fn rules_engine_handles_no_rules() {
         tags: Vec::new(),
         colour: None,
         source_inbox: "Downloads".to_string(),
+        is_dir: false,
     };
 
     assert!(engine.evaluate(&entry).is_none());
@@ -437,6 +438,7 @@ fn rules_template_expansion() {
         tags: Vec::new(),
         colour: None,
         source_inbox: "Downloads".to_string(),
+        is_dir: false,
     };
 
     let rule = engine.evaluate(&entry).unwrap();

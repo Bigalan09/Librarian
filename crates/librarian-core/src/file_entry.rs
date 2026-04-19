@@ -41,15 +41,15 @@ impl FinderColour {
 /// A filesystem object discovered during scanning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
-    /// Absolute path to the file.
+    /// Absolute path to the file or directory.
     pub path: PathBuf,
-    /// Filename with extension.
+    /// Filename (or directory name) with extension.
     pub name: String,
-    /// File extension (lowercase, no dot). None for extensionless files.
+    /// File extension (lowercase, no dot). None for extensionless files or directories.
     pub extension: Option<String>,
-    /// File size in bytes.
+    /// File size in bytes. Zero for directories.
     pub size_bytes: u64,
-    /// blake3 hex digest. Empty until hashing is performed.
+    /// blake3 hex digest. Empty until hashing is performed. Always empty for directories.
     pub hash: String,
     /// File creation timestamp.
     pub created_at: DateTime<Utc>,
@@ -61,18 +61,28 @@ pub struct FileEntry {
     pub colour: Option<FinderColour>,
     /// Which inbox folder this file was found in.
     pub source_inbox: String,
+    /// Whether this entry is a directory (treated as an atomic unit for classification).
+    #[serde(default)]
+    pub is_dir: bool,
 }
 
 impl FileEntry {
     /// Create a new FileEntry from a path and source inbox name.
     /// Populates metadata from the filesystem. Hash is left empty.
+    /// Works for both files and directories.
     pub fn from_path(path: PathBuf, source_inbox: &str) -> std::io::Result<Self> {
         let metadata = std::fs::metadata(&path)?;
+        let is_dir = metadata.is_dir();
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+        // Directories don't have meaningful extensions for classification.
+        let extension = if is_dir {
+            None
+        } else {
+            path.extension().map(|e| e.to_string_lossy().to_lowercase())
+        };
 
         let created_at = metadata
             .created()
@@ -87,13 +97,14 @@ impl FileEntry {
             path,
             name,
             extension,
-            size_bytes: metadata.len(),
+            size_bytes: if is_dir { 0 } else { metadata.len() },
             hash: String::new(),
             created_at,
             modified_at,
             tags: Vec::new(),
             colour: None,
             source_inbox: source_inbox.to_owned(),
+            is_dir,
         })
     }
 }

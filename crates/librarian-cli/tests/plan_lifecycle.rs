@@ -241,6 +241,7 @@ fn rules_engine_matches_fixtures() {
         tags: Vec::new(),
         colour: None,
         source_inbox: "Downloads".to_string(),
+        is_dir: false,
     };
 
     let result = engine.evaluate(&entry);

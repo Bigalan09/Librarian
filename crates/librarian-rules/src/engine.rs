@@ -162,6 +162,7 @@ mod tests {
             tags: Vec::new(),
             colour: None,
             source_inbox: source.to_owned(),
+            is_dir: false,
         }
     }
 
@@ -393,6 +394,7 @@ rules:
             tags: Vec::new(),
             colour: None,
             source_inbox: "Downloads".to_owned(),
+            is_dir: false,
         };
 
         let result = RuleEngine::expand_destination("{year}/{month}/{date}/{ext}/{source}", &entry);
@@ -412,6 +414,7 @@ rules:
             tags: Vec::new(),
             colour: None,
             source_inbox: "Desktop".to_owned(),
+            is_dir: false,
         };
 
         let result = RuleEngine::expand_destination("{year}/{ext}", &entry);
@@ -445,6 +448,7 @@ rules:
             tags: Vec::new(),
             colour: None,
             source_inbox: "Downloads".to_owned(),
+            is_dir: false,
         };
 
         assert_eq!(engine.evaluate(&entry).unwrap().name, "Has TODOs");

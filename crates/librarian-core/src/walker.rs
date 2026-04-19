@@ -6,7 +6,13 @@ use crate::file_entry::FileEntry;
 use crate::hasher;
 use crate::ignore::IgnoreEngine;
 
-/// Scan a directory recursively, producing FileEntry items.
+/// Scan a directory's top-level entries, producing FileEntry items.
+///
+/// Files are collected as normal. Directories are treated as atomic units
+/// (classified by folder name and moved whole) rather than being recursed
+/// into. This is because top-level folders in an inbox may represent entire
+/// projects or logical groups that should stay together.
+///
 /// Respects the ignore engine and max_files limit.
 pub async fn scan_directory(
     source_dir: &Path,
@@ -15,58 +21,50 @@ pub async fn scan_directory(
     max_files: usize,
 ) -> anyhow::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
-    let mut stack = vec![source_dir.to_path_buf()];
 
-    while let Some(dir) = stack.pop() {
-        let mut read_dir = match tokio::fs::read_dir(&dir).await {
-            Ok(rd) => rd,
+    let mut read_dir = match tokio::fs::read_dir(source_dir).await {
+        Ok(rd) => rd,
+        Err(e) => {
+            tracing::warn!("cannot read directory {}: {}", source_dir.display(), e);
+            return Ok(entries);
+        }
+    };
+
+    while let Some(entry) = read_dir.next_entry().await? {
+        if entries.len() >= max_files {
+            tracing::info!(
+                "reached max_files limit ({}) during scan of {}",
+                max_files,
+                source_dir.display()
+            );
+            return Ok(entries);
+        }
+
+        let path = entry.path();
+
+        if ignore_engine.is_ignored(&path) {
+            tracing::debug!("ignored: {}", path.display());
+            continue;
+        }
+
+        let file_type = match entry.file_type().await {
+            Ok(ft) => ft,
             Err(e) => {
-                tracing::warn!("cannot read directory {}: {}", dir.display(), e);
+                tracing::warn!("cannot stat {}: {}", path.display(), e);
                 continue;
             }
         };
 
-        while let Some(entry) = read_dir.next_entry().await? {
-            if entries.len() >= max_files {
-                tracing::info!(
-                    "reached max_files limit ({}) during scan of {}",
-                    max_files,
-                    source_dir.display()
-                );
-                return Ok(entries);
-            }
+        if file_type.is_symlink() && IgnoreEngine::is_external_symlink(&path, source_dir) {
+            tracing::debug!("ignored external symlink: {}", path.display());
+            continue;
+        }
 
-            let path = entry.path();
-
-            if ignore_engine.is_ignored(&path) {
-                tracing::debug!("ignored: {}", path.display());
-                continue;
-            }
-
-            let file_type = match entry.file_type().await {
-                Ok(ft) => ft,
+        if file_type.is_file() || file_type.is_dir() {
+            match FileEntry::from_path(path.clone(), source_inbox_name) {
+                Ok(entry) => entries.push(entry),
                 Err(e) => {
-                    tracing::warn!("cannot stat {}: {}", path.display(), e);
-                    continue;
-                }
-            };
-
-            if file_type.is_symlink() && IgnoreEngine::is_external_symlink(&path, source_dir) {
-                tracing::debug!("ignored external symlink: {}", path.display());
-                continue;
-            }
-
-            if file_type.is_dir() {
-                stack.push(path);
-                continue;
-            }
-
-            if file_type.is_file() {
-                match FileEntry::from_path(path.clone(), source_inbox_name) {
-                    Ok(entry) => entries.push(entry),
-                    Err(e) => {
-                        tracing::warn!("cannot read metadata for {}: {}", path.display(), e);
-                    }
+                    tracing::warn!("cannot read metadata for {}: {}", path.display(), e);
                 }
             }
         }
@@ -76,21 +74,30 @@ pub async fn scan_directory(
 }
 
 /// Hash all entries in parallel using tokio tasks.
+/// Directories are skipped (their hash remains empty).
 pub async fn hash_entries(entries: &mut [FileEntry]) -> anyhow::Result<()> {
     // Process in batches to avoid spawning thousands of tasks
     let batch_size = 64;
     for chunk in entries.chunks_mut(batch_size) {
         let mut handles = Vec::new();
         for entry in chunk.iter() {
-            let path = entry.path.clone();
-            handles.push(tokio::spawn(async move { hasher::hash_file(&path).await }));
+            if entry.is_dir {
+                handles.push(None);
+            } else {
+                let path = entry.path.clone();
+                handles.push(Some(tokio::spawn(
+                    async move { hasher::hash_file(&path).await },
+                )));
+            }
         }
 
         for (entry, handle) in chunk.iter_mut().zip(handles) {
-            match handle.await? {
-                Ok(hash) => entry.hash = hash,
-                Err(e) => {
-                    tracing::warn!("failed to hash {}: {}", entry.path.display(), e);
+            if let Some(handle) = handle {
+                match handle.await? {
+                    Ok(hash) => entry.hash = hash,
+                    Err(e) => {
+                        tracing::warn!("failed to hash {}: {}", entry.path.display(), e);
+                    }
                 }
             }
         }
@@ -115,7 +122,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_finds_visible_files() {
+    async fn scan_finds_top_level_files_and_dirs() {
         let dir = create_test_dir();
         let engine = IgnoreEngine::new(dir.path(), None).unwrap();
         let entries = scan_directory(dir.path(), "test", &engine, 1000)
@@ -125,7 +132,26 @@ mod tests {
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"file1.txt"));
         assert!(names.contains(&"file2.pdf"));
-        assert!(names.contains(&"file3.csv"));
+        // Subdirectory is collected as an atomic entry, not recursed into
+        assert!(names.contains(&"sub"));
+        // Files inside subdirectories are NOT collected individually
+        assert!(!names.contains(&"file3.csv"));
+    }
+
+    #[tokio::test]
+    async fn scan_marks_directories_as_is_dir() {
+        let dir = create_test_dir();
+        let engine = IgnoreEngine::new(dir.path(), None).unwrap();
+        let entries = scan_directory(dir.path(), "test", &engine, 1000)
+            .await
+            .unwrap();
+
+        let sub_entry = entries.iter().find(|e| e.name == "sub").unwrap();
+        assert!(sub_entry.is_dir);
+        assert!(sub_entry.extension.is_none());
+
+        let file_entry = entries.iter().find(|e| e.name == "file1.txt").unwrap();
+        assert!(!file_entry.is_dir);
     }
 
     #[tokio::test]
@@ -198,13 +224,19 @@ mod tests {
 
         hash_entries(&mut entries).await.unwrap();
 
-        assert!(entries.iter().all(|e| !e.hash.is_empty()));
-        // Verify hash is valid hex
+        // Files should have hashes populated
+        let files: Vec<_> = entries.iter().filter(|e| !e.is_dir).collect();
+        assert!(!files.is_empty());
+        assert!(files.iter().all(|e| !e.hash.is_empty()));
         assert!(
-            entries
+            files
                 .iter()
                 .all(|e| e.hash.chars().all(|c| c.is_ascii_hexdigit()))
         );
+
+        // Directories should still have empty hashes (skipped)
+        let dirs: Vec<_> = entries.iter().filter(|e| e.is_dir).collect();
+        assert!(dirs.iter().all(|e| e.hash.is_empty()));
     }
 
     #[tokio::test]
