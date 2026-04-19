@@ -66,3 +66,88 @@ fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::Pa
             )
         })
 }
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn resolve_named_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+
+        let path = resolve_plan_path(&plans_dir, "my-plan").unwrap();
+        assert_eq!(path, plans_dir.join("my-plan.json"));
+    }
+
+    #[test]
+    fn resolve_latest_with_one_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+        std::fs::write(plans_dir.join("first.json"), "{}").unwrap();
+
+        let path = resolve_plan_path(&plans_dir, "latest").unwrap();
+        assert_eq!(path, plans_dir.join("first.json"));
+    }
+
+    #[test]
+    fn resolve_latest_picks_most_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+
+        // Create two plan files with different mtimes
+        std::fs::write(plans_dir.join("old.json"), "{}").unwrap();
+        // Sleep briefly to ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::fs::write(plans_dir.join("new.json"), "{}").unwrap();
+
+        let path = resolve_plan_path(&plans_dir, "latest").unwrap();
+        assert_eq!(path, plans_dir.join("new.json"));
+    }
+
+    #[test]
+    fn resolve_latest_nonexistent_dir_errors() {
+        let result = resolve_plan_path(&PathBuf::from("/nonexistent/plans"), "latest");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No plans directory")
+        );
+    }
+
+    #[test]
+    fn resolve_latest_empty_dir_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+
+        let result = resolve_plan_path(&plans_dir, "latest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No plans found"));
+    }
+
+    #[test]
+    fn resolve_latest_ignores_non_json_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+
+        // Only non-json files
+        std::fs::write(plans_dir.join("readme.md"), "# Plans").unwrap();
+        std::fs::write(plans_dir.join("backup.bak"), "data").unwrap();
+
+        let result = resolve_plan_path(&plans_dir, "latest");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn latest_alias_constant() {
+        assert_eq!(LATEST_ALIAS, "latest");
+    }
+}

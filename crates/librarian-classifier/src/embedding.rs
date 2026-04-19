@@ -245,12 +245,7 @@ mod tests {
         let provider = EmptyEmbedProvider;
         let result = embed_text(&provider, "empty").await;
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no embeddings")
-        );
+        assert!(result.unwrap_err().to_string().contains("no embeddings"));
     }
 
     #[tokio::test]
@@ -259,12 +254,7 @@ mod tests {
         let erased: &dyn ErasedProvider = &provider;
         let result = embed_text_dyn(erased, "empty").await;
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no embeddings")
-        );
+        assert!(result.unwrap_err().to_string().contains("no embeddings"));
     }
 
     #[tokio::test]

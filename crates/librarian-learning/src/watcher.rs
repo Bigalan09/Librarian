@@ -238,10 +238,7 @@ mod tests {
         let original_path = watch_dir.join("original.txt");
         let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
             HashMap::new();
-        manifest.insert(
-            known_hash,
-            (original_path, chrono::Utc::now()),
-        );
+        manifest.insert(known_hash, (original_path, chrono::Utc::now()));
 
         // Create a file at a DIFFERENT path (simulates user moving the file)
         let new_path = watch_dir.join("subdir");
@@ -311,10 +308,7 @@ mod tests {
         let old_time = chrono::Utc::now() - chrono::Duration::days(30);
         let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
             HashMap::new();
-        manifest.insert(
-            known_hash,
-            (watch_dir.join("old_original.txt"), old_time),
-        );
+        manifest.insert(known_hash, (watch_dir.join("old_original.txt"), old_time));
 
         // Create file in watched dir
         std::fs::write(watch_dir.join("moved_old.txt"), content).unwrap();

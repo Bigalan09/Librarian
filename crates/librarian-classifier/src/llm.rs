@@ -432,7 +432,9 @@ mod tests {
         };
         let erased: &dyn ErasedProvider = &provider;
         let entry = make_test_entry();
-        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[]).await.unwrap();
+        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[])
+            .await
+            .unwrap();
 
         assert_eq!(result.destination, "Finance");
         assert!((result.confidence - 0.92).abs() < 1e-6);
@@ -445,10 +447,9 @@ mod tests {
         };
         let entry = make_test_entry();
         let examples = vec!["report.pdf was moved to Personal".to_string()];
-        let result =
-            LlmClassifier::classify(&provider, &entry, &["Work".to_string()], &examples)
-                .await
-                .unwrap();
+        let result = LlmClassifier::classify(&provider, &entry, &["Work".to_string()], &examples)
+            .await
+            .unwrap();
 
         assert_eq!(result.destination, "Personal");
     }
@@ -459,7 +460,12 @@ mod tests {
         let entry = make_test_entry();
         let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("chat service down"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("chat service down")
+        );
     }
 
     #[tokio::test]
@@ -489,7 +495,9 @@ mod tests {
             response: "Here is the result:\n```json\n{\"destination\": \"Docs\", \"confidence\": 0.75, \"tags\": [], \"reason\": \"Document file\"}\n```".to_string(),
         };
         let entry = make_test_entry();
-        let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await.unwrap();
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(result.destination, "Docs");
     }
 }

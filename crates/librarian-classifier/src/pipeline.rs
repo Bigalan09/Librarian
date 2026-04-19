@@ -821,7 +821,8 @@ rules:
     async fn empty_vector_store_skips_centroid_tier() {
         let engine = empty_engine();
         let gate = ConfidenceGate::new(Default::default());
-        let chat_response = r#"{"destination": "Docs", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
+        let chat_response =
+            r#"{"destination": "Docs", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
         let provider = MockProvider::new(vec![1.0, 0.0], chat_response);
         let mut cache = EmbeddingCache::new();
 

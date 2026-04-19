@@ -1045,3 +1045,176 @@ fn apply_latest_resolves_most_recent() {
     // File should be moved
     assert!(dest.join("Documents/doc.pdf").exists());
 }
+
+// ---------------------------------------------------------------------------
+// Double process produces two plans
+// ---------------------------------------------------------------------------
+
+#[test]
+fn process_twice_produces_two_plans() {
+    let (dir, _home, inbox, dest) = setup_full_home();
+
+    std::fs::write(inbox.join("a.txt"), "first").unwrap();
+
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    // Add another file and process again
+    std::fs::write(inbox.join("b.txt"), "second").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    // Plans list should show 2 plans (two lines of output with plan names)
+    let output = librarian()
+        .args(["plans"])
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(output).unwrap();
+    let plan_lines: Vec<_> = stdout.lines().filter(|l| l.contains("Draft")).collect();
+    assert_eq!(plan_lines.len(), 2, "expected 2 plans, got: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// Rollback latest alias
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rollback_latest_alias() {
+    let (dir, _home, inbox, dest) = setup_full_home();
+
+    std::fs::write(inbox.join("temp.txt"), "rollback test").unwrap();
+
+    // Process and apply
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    librarian()
+        .args(["apply", "--plan", "latest", "--backup"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    // Rollback using "latest" alias
+    librarian()
+        .args(["rollback", "--plan", "latest"])
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rolled back plan"));
+}
+
+// ---------------------------------------------------------------------------
+// Plans clean with default days
+// ---------------------------------------------------------------------------
+
+#[test]
+fn plans_clean_with_days() {
+    let (dir, home) = setup_minimal_home();
+
+    // Create an old plan file
+    let plans_dir = home.join("plans");
+    std::fs::write(plans_dir.join("ancient.json"), r#"{"id":"ancient","status":"Draft","actions":[],"source_dirs":[],"destination_root":"","created_at":"2020-01-01T00:00:00Z","applied_at":null}"#).unwrap();
+
+    librarian()
+        .args(["plans", "clean", "--days", "1"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Status shows plan counts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn status_shows_plan_summary() {
+    let (dir, _home, inbox, dest) = setup_full_home();
+
+    std::fs::write(inbox.join("status_test.txt"), "data").unwrap();
+
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    librarian()
+        .args(["status"])
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("plan"));
+}
+
+// ---------------------------------------------------------------------------
+// Init double-run preserves existing config
+// ---------------------------------------------------------------------------
+
+#[test]
+fn init_preserves_existing_rules() {
+    let dir = tempdir().unwrap();
+
+    // First init
+    librarian()
+        .args(["init"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    // Write custom rules
+    let rules_path = dir.path().join(".librarian").join("rules.yaml");
+    std::fs::write(
+        &rules_path,
+        "rules:\n  - name: Custom\n    match:\n      extension: xyz\n    destination: Custom\n",
+    )
+    .unwrap();
+
+    // Second init should not overwrite
+    librarian()
+        .args(["init"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&rules_path).unwrap();
+    assert!(content.contains("Custom"));
+}
