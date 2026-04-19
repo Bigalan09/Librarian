@@ -170,6 +170,7 @@ thresholds:
 | `config show` | Print current config |
 | `update` / `upgrade` | Check for and install updates from GitHub |
 | `update --check` | Check for updates without installing |
+| `uninstall` | Remove Librarian, its config, cache, and data |
 | `completions <shell>` | Generate shell completions (bash, zsh, fish) |
 | `-v` / `--version` | Print version |
 

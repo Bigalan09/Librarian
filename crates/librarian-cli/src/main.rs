@@ -191,6 +191,13 @@ enum Commands {
         check: bool,
     },
 
+    /// Remove Librarian, its config, cache, and data from this system
+    Uninstall {
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for
@@ -340,6 +347,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Update { check } | Commands::Upgrade { check } => {
             commands::update::run(check).await
         }
+        Commands::Uninstall { yes } => commands::uninstall::run(yes).await,
         Commands::Completions { shell } => {
             clap_complete::generate(
                 shell,

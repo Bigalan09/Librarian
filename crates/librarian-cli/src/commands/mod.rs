@@ -9,6 +9,7 @@ pub mod rollback;
 pub mod rules;
 pub mod status;
 pub mod suggest;
+pub mod uninstall;
 pub mod update;
 pub mod watch;
 

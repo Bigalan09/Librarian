@@ -70,6 +70,9 @@ notify = "7"
 # PDF text extraction
 pdf-extract = "0.7"
 
+# Platform directories
+dirs = "6"
+
 # Testing
 mockito = "1"
 tempfile = "3"
