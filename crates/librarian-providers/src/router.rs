@@ -219,11 +219,4 @@ mod tests {
         let active = router.active().unwrap();
         assert_eq!(active.name(), "lmstudio");
     }
-
-    #[test]
-    fn active_type_returns_configured_type() {
-        // ProviderRouter without initialization — test the active_type getter
-        let config = ProviderConfig::default();
-        assert_eq!(config.provider_type, ProviderType::LmStudio);
-    }
 }

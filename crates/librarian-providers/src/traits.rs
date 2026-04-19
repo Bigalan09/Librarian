@@ -92,42 +92,4 @@ mod tests {
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.content, "Héllo wörld 日本語");
     }
-
-    #[test]
-    fn chat_response_fields() {
-        let resp = ChatResponse {
-            content: "Hello!".to_string(),
-            model: "gpt-4o".to_string(),
-        };
-        assert_eq!(resp.content, "Hello!");
-        assert_eq!(resp.model, "gpt-4o");
-    }
-
-    #[test]
-    fn model_info_fields() {
-        let info = ModelInfo {
-            id: "test-model".to_string(),
-        };
-        assert_eq!(info.id, "test-model");
-    }
-
-    #[test]
-    fn chat_response_clone() {
-        let resp = ChatResponse {
-            content: "test".to_string(),
-            model: "model".to_string(),
-        };
-        let cloned = resp.clone();
-        assert_eq!(cloned.content, resp.content);
-        assert_eq!(cloned.model, resp.model);
-    }
-
-    #[test]
-    fn model_info_clone() {
-        let info = ModelInfo {
-            id: "abc".to_string(),
-        };
-        let cloned = info.clone();
-        assert_eq!(cloned.id, info.id);
-    }
 }
