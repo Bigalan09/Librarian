@@ -584,4 +584,168 @@ mod tests {
         let ts = bucket.timestamps.lock().unwrap();
         assert!(ts.is_empty());
     }
+
+    #[tokio::test]
+    async fn validate_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .match_header("authorization", "Bearer test-key")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[{"id":"gpt-4o-mini","object":"model"}]}"#)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "test-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let info = provider.validate().await.unwrap();
+        assert_eq!(info.id, "gpt-4o-mini");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn validate_401_unauthorized() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(401)
+            .with_body(r#"{"error":{"message":"Invalid API key"}}"#)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "bad-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let err = provider.validate().await.unwrap_err();
+        assert!(err.to_string().contains("401"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn embed_401_unauthorized() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/embeddings")
+            .with_status(401)
+            .with_body(r#"{"error":{"message":"Invalid API key"}}"#)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "bad-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let err = provider.embed(vec!["test".to_string()]).await.unwrap_err();
+        assert!(err.to_string().contains("401"));
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn name_returns_openai() {
+        let provider = OpenAi::new("test-key", None, None, None);
+        assert_eq!(provider.name(), "openai");
+    }
+
+    #[test]
+    fn new_uses_defaults() {
+        let provider = OpenAi::new("key", None, None, None);
+        assert_eq!(provider.llm_model, "gpt-4o-mini");
+        assert_eq!(provider.embed_model, "text-embedding-3-small");
+        assert_eq!(provider.base_url, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn new_accepts_custom_models() {
+        let provider = OpenAi::new(
+            "key",
+            Some("gpt-4"),
+            Some("text-embedding-ada-002"),
+            Some(100),
+        );
+        assert_eq!(provider.llm_model, "gpt-4");
+        assert_eq!(provider.embed_model, "text-embedding-ada-002");
+        assert_eq!(provider.rate_limiter.rpm, 100);
+    }
+
+    #[tokio::test]
+    async fn token_bucket_acquire_succeeds_under_limit() {
+        let bucket = TokenBucket::new(100);
+        // Should acquire without blocking
+        bucket.acquire().await;
+        let ts = bucket.timestamps.lock().unwrap();
+        assert_eq!(ts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn chat_empty_choices_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"choices":[],"model":"gpt-4o-mini"}"#)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "test-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let msgs = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let err = provider.chat(msgs, 0.7, 256).await.unwrap_err();
+        assert!(err.to_string().contains("No choices"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn validate_no_models_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let provider = OpenAi::with_client(
+            Client::new(),
+            &format!("{}/v1", server.url()),
+            "test-key",
+            "gpt-4o-mini",
+            "text-embedding-3-small",
+            60,
+        );
+
+        let err = provider.validate().await.unwrap_err();
+        assert!(err.to_string().contains("No models"));
+        mock.assert_async().await;
+    }
 }

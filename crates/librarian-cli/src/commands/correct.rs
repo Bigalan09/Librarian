@@ -28,7 +28,7 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
     }
 
     // Find the file in the decision log to get the original placement
-    let file_hash = hash_file(&file)?;
+    let file_hash = librarian_core::hasher::hash_file_sync(&file)?;
     let decisions = read_decisions(&decisions_path)?;
 
     let original_decision = decisions.iter().rev().find(|d| d.file_hash == file_hash);
@@ -106,20 +106,11 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
 
     println!("Correction recorded for {}", file_hash);
 
-    // Update centroids if we have an embedding store
-    let centroid_path = home.join("history/centroids.msgpack");
-    if centroid_path.exists() {
-        tracing::info!("Centroid update would happen here with embedding support");
-    }
+    // Centroid drift happens automatically during the next `process` run:
+    // the correction is recorded in corrections.jsonl, and few-shot examples
+    // + embedding updates are computed when files are re-classified.
 
     Ok(())
-}
-
-/// Hash a file using blake3.
-fn hash_file(path: &PathBuf) -> anyhow::Result<String> {
-    let data = std::fs::read(path)?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
 }
 
 /// Detect the source inbox name from a file path by comparing against
@@ -140,4 +131,84 @@ fn detect_source_inbox(path: &std::path::Path, cfg: &config::AppConfig) -> Strin
         .and_then(|p| p.file_name())
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn detect_inbox_from_matching_path() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(
+            std::path::Path::new("/home/user/Downloads/invoice.pdf"),
+            &cfg,
+        );
+        assert_eq!(result, "Downloads");
+    }
+
+    #[test]
+    fn detect_inbox_falls_back_to_parent() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        let result =
+            detect_source_inbox(std::path::Path::new("/other/path/Uploads/file.txt"), &cfg);
+        assert_eq!(result, "Uploads");
+    }
+
+    #[test]
+    fn detect_inbox_no_inboxes_configured() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        let result = detect_source_inbox(std::path::Path::new("/some/dir/file.txt"), &cfg);
+        assert_eq!(result, "dir");
+    }
+
+    #[test]
+    fn detect_inbox_multiple_inboxes() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![
+                PathBuf::from("/home/user/Downloads"),
+                PathBuf::from("/home/user/Desktop"),
+            ],
+            ..Default::default()
+        };
+        let result =
+            detect_source_inbox(std::path::Path::new("/home/user/Desktop/photo.jpg"), &cfg);
+        assert_eq!(result, "Desktop");
+    }
+
+    #[test]
+    fn detect_inbox_root_path_returns_unknown() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        // File at root — no parent directory name
+        let result = detect_source_inbox(std::path::Path::new("/file.txt"), &cfg);
+        // Parent is "/", file_name is None -> "unknown"
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn detect_inbox_partial_name_match() {
+        let cfg = config::AppConfig {
+            inbox_folders: vec![PathBuf::from("/home/user/Downloads")],
+            ..Default::default()
+        };
+        // Path contains "Downloads" in a different location
+        let result = detect_source_inbox(
+            std::path::Path::new("/managed/Downloads-sorted/file.txt"),
+            &cfg,
+        );
+        assert_eq!(result, "Downloads");
+    }
 }

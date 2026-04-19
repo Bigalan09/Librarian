@@ -149,4 +149,57 @@ mod tests {
     fn unknown_line_treated_as_empty() {
         assert_eq!(parse_sse_line("event: message"), SseEvent::Empty);
     }
+
+    #[test]
+    fn accumulate_stops_at_done_ignores_trailing() {
+        let lines = [
+            r#"data: {"choices":[{"delta":{"content":"A"}}]}"#,
+            "data: [DONE]",
+            r#"data: {"choices":[{"delta":{"content":"B"}}]}"#, // after DONE
+        ];
+        let content = accumulate_sse_content(lines.iter().copied());
+        assert_eq!(content, "A");
+    }
+
+    #[test]
+    fn extract_delta_content_null_value() {
+        let json = r#"{"choices":[{"delta":{"content":null}}]}"#;
+        assert_eq!(extract_delta_content(json), None);
+    }
+
+    #[test]
+    fn data_line_without_space_after_colon() {
+        // "data:payload" with no space
+        let line = r#"data:{"choices":[{"delta":{"content":"ok"}}]}"#;
+        match parse_sse_line(line) {
+            SseEvent::Data(payload) => {
+                assert_eq!(extract_delta_content(&payload), Some("ok".to_string()));
+            }
+            other => panic!("Expected Data, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn done_with_crlf_trailing() {
+        assert_eq!(parse_sse_line("data: [DONE]\r\n"), SseEvent::Done);
+    }
+
+    #[test]
+    fn accumulate_empty_input() {
+        let content = accumulate_sse_content(std::iter::empty());
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn accumulate_comments_and_empty_lines_only() {
+        let lines = [": comment", "", ": another"];
+        let content = accumulate_sse_content(lines.iter().copied());
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn extract_delta_empty_choices() {
+        let json = r#"{"choices":[]}"#;
+        assert_eq!(extract_delta_content(json), None);
+    }
 }

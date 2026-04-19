@@ -174,6 +174,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn openai_router_fails_on_unreachable() {
+        let config = ProviderConfig {
+            provider_type: ProviderType::OpenAi,
+            base_url: "http://127.0.0.1:1/v1".to_string(),
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        };
+        let result = ProviderRouter::new(&config).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn lmstudio_router_fails_on_unreachable() {
         let config = ProviderConfig {
             provider_type: ProviderType::LmStudio,
@@ -182,5 +194,29 @@ mod tests {
         };
         let result = ProviderRouter::new(&config).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn lmstudio_router_validates_and_provides_active() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[{"id":"test-model","object":"model"}]}"#)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: ProviderType::LmStudio,
+            base_url: format!("{}/v1", server.url()),
+            ..Default::default()
+        };
+
+        let router = ProviderRouter::new(&config).await.unwrap();
+        assert_eq!(router.active_type(), ProviderType::LmStudio);
+
+        let active = router.active().unwrap();
+        assert_eq!(active.name(), "lmstudio");
     }
 }

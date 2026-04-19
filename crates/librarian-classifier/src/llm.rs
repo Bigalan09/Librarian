@@ -287,4 +287,215 @@ mod tests {
         assert!(prompt.contains("Downloads"));
         assert!(prompt.contains("important"));
     }
+
+    #[test]
+    fn user_prompt_no_extension() {
+        use chrono::{TimeZone, Utc};
+        use std::path::PathBuf;
+
+        let entry = FileEntry {
+            path: PathBuf::from("/tmp/Makefile"),
+            name: "Makefile".to_string(),
+            extension: None,
+            size_bytes: 256,
+            hash: String::new(),
+            created_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            modified_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            tags: Vec::new(),
+            colour: None,
+            source_inbox: "Desktop".to_string(),
+        };
+
+        let prompt = build_user_prompt(&entry);
+        assert!(prompt.contains("(no extension)"));
+        assert!(prompt.contains("(none)"));
+    }
+
+    #[test]
+    fn extract_json_plain_text_fallback() {
+        let raw = "no braces here";
+        assert_eq!(extract_json(raw), "no braces here");
+    }
+
+    #[test]
+    fn extract_json_generic_code_fence() {
+        let raw = "```\n{\"a\": 2}\n```";
+        assert_eq!(extract_json(raw), "{\"a\": 2}");
+    }
+
+    #[test]
+    fn parse_llm_response_missing_fields() {
+        let raw = r#"{"destination": "Docs"}"#;
+        // Missing confidence, tags, reason - serde should fail
+        assert!(parse_llm_response(raw).is_err());
+    }
+
+    use librarian_providers::traits::{ChatResponse, ModelInfo};
+
+    struct MockChatProvider {
+        response: String,
+    }
+
+    impl Provider for MockChatProvider {
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: "mock".to_string(),
+            })
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<ChatResponse> {
+            Ok(ChatResponse {
+                content: self.response.clone(),
+                model: "mock".to_string(),
+            })
+        }
+        async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(Vec::new())
+        }
+        fn name(&self) -> &str {
+            "mock-chat"
+        }
+    }
+
+    struct FailingChatProvider;
+
+    impl Provider for FailingChatProvider {
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            panic!("validate() not used in failing-chat tests")
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<ChatResponse> {
+            Err(anyhow::anyhow!("chat service down"))
+        }
+        async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(Vec::new())
+        }
+        fn name(&self) -> &str {
+            "failing-chat"
+        }
+    }
+
+    fn make_test_entry() -> FileEntry {
+        use chrono::{TimeZone, Utc};
+        use std::path::PathBuf;
+
+        FileEntry {
+            path: PathBuf::from("/tmp/report.pdf"),
+            name: "report.pdf".to_string(),
+            extension: Some("pdf".to_string()),
+            size_bytes: 2048,
+            hash: String::new(),
+            created_at: Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap(),
+            modified_at: Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap(),
+            tags: Vec::new(),
+            colour: None,
+            source_inbox: "Downloads".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn classify_with_mock_provider() {
+        let provider = MockChatProvider {
+            response: r#"{"destination": "Work/Reports", "confidence": 0.88, "tags": ["work"], "reason": "Looks like a work report"}"#.to_string(),
+        };
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify(
+            &provider,
+            &entry,
+            &["Work".to_string(), "Personal".to_string()],
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.destination, "Work/Reports");
+        assert!((result.confidence - 0.88).abs() < 1e-6);
+        assert_eq!(result.tags, vec!["work"]);
+    }
+
+    #[tokio::test]
+    async fn classify_dyn_with_mock_provider() {
+        use librarian_providers::router::ErasedProvider;
+
+        let provider = MockChatProvider {
+            response: r#"{"destination": "Finance", "confidence": 0.92, "tags": ["invoice"], "reason": "Invoice document"}"#.to_string(),
+        };
+        let erased: &dyn ErasedProvider = &provider;
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.destination, "Finance");
+        assert!((result.confidence - 0.92).abs() < 1e-6);
+    }
+
+    #[tokio::test]
+    async fn classify_with_few_shot_examples() {
+        let provider = MockChatProvider {
+            response: r#"{"destination": "Personal", "confidence": 0.85, "tags": [], "reason": "Based on corrections"}"#.to_string(),
+        };
+        let entry = make_test_entry();
+        let examples = vec!["report.pdf was moved to Personal".to_string()];
+        let result = LlmClassifier::classify(&provider, &entry, &["Work".to_string()], &examples)
+            .await
+            .unwrap();
+
+        assert_eq!(result.destination, "Personal");
+    }
+
+    #[tokio::test]
+    async fn classify_propagates_chat_error() {
+        let provider = FailingChatProvider;
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("chat service down")
+        );
+    }
+
+    #[tokio::test]
+    async fn classify_dyn_propagates_chat_error() {
+        use librarian_providers::router::ErasedProvider;
+
+        let provider = FailingChatProvider;
+        let erased: &dyn ErasedProvider = &provider;
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[]).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn classify_returns_error_on_invalid_json_response() {
+        let provider = MockChatProvider {
+            response: "I cannot classify this file.".to_string(),
+        };
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn classify_handles_markdown_wrapped_response() {
+        let provider = MockChatProvider {
+            response: "Here is the result:\n```json\n{\"destination\": \"Docs\", \"confidence\": 0.75, \"tags\": [], \"reason\": \"Document file\"}\n```".to_string(),
+        };
+        let entry = make_test_entry();
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[])
+            .await
+            .unwrap();
+        assert_eq!(result.destination, "Docs");
+    }
 }

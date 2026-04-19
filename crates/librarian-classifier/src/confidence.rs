@@ -202,4 +202,65 @@ mod tests {
             other => panic!("expected Accept with low threshold, got {other:?}"),
         }
     }
+
+    #[test]
+    fn content_embedding_exact_threshold() {
+        let gate = default_gate(); // threshold = 0.75
+        match gate.check_content_embedding(0.75, "Work") {
+            GateResult::Accept { confidence, .. } => {
+                assert!((confidence - 0.75).abs() < 1e-6);
+            }
+            other => panic!("expected Accept at exact threshold, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn llm_confidence_exact_threshold() {
+        let gate = default_gate(); // threshold = 0.70
+        match gate.check_llm_confidence(0.70, "Invoices") {
+            GateResult::Accept { confidence, .. } => {
+                assert!((confidence - 0.70).abs() < 1e-6);
+            }
+            other => panic!("expected Accept at exact threshold, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn thresholds_accessor() {
+        let gate = custom_gate(0.90, 0.85, 0.60);
+        let t = gate.thresholds();
+        assert!((t.filename_embedding - 0.90).abs() < 1e-6);
+        assert!((t.content_embedding - 0.85).abs() < 1e-6);
+        assert!((t.llm_confidence - 0.60).abs() < 1e-6);
+    }
+
+    #[test]
+    fn gate_result_serialisation_round_trip() {
+        let accept = GateResult::Accept {
+            destination: "Work".to_string(),
+            confidence: 0.85,
+        };
+        let json = serde_json::to_string(&accept).unwrap();
+        let restored: GateResult = serde_json::from_str(&json).unwrap();
+        match restored {
+            GateResult::Accept {
+                destination,
+                confidence,
+            } => {
+                assert_eq!(destination, "Work");
+                assert!((confidence - 0.85).abs() < 1e-6);
+            }
+            other => panic!("expected Accept, got {other:?}"),
+        }
+
+        let escalate = GateResult::Escalate;
+        let json = serde_json::to_string(&escalate).unwrap();
+        let _: GateResult = serde_json::from_str(&json).unwrap();
+
+        let nr = GateResult::NeedsReview {
+            reason: "too low".to_string(),
+        };
+        let json = serde_json::to_string(&nr).unwrap();
+        let _: GateResult = serde_json::from_str(&json).unwrap();
+    }
 }

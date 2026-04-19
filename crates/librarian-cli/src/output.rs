@@ -37,13 +37,6 @@ fn bar_style() -> ProgressStyle {
 }
 
 /// Create a progress bar for the scanning phase.
-///
-/// The bar is initialised with `total` steps and pre-labelled "Scanning".
-/// Callers should update the message with the source name once known, e.g.:
-///
-/// ```ignore
-/// pb.set_message(format!("Scanning {source}"));
-/// ```
 pub fn create_scan_progress(total: u64) -> ProgressBar {
     let pb = ProgressBar::new(total);
     pb.set_style(bar_style());
@@ -56,14 +49,6 @@ pub fn create_classify_progress(total: u64) -> ProgressBar {
     let pb = ProgressBar::new(total);
     pb.set_style(bar_style());
     pb.set_message("Classifying");
-    pb
-}
-
-/// Create a progress bar for the apply phase.
-pub fn create_apply_progress(total: u64) -> ProgressBar {
-    let pb = ProgressBar::new(total);
-    pb.set_style(bar_style());
-    pb.set_message("Applying");
     pb
 }
 
@@ -91,6 +76,63 @@ pub fn print_summary(stats: &PlanStats) {
         "{:<24} {:>5}  -> NeedsReview",
         "Low confidence", stats.needs_review
     );
+    println!("{:<24} {:>5}", "Skipped (no match)", stats.skipped);
     println!("{:<24} {:>5}", "Collisions skipped", stats.collisions);
     println!("{:<24} {:>5}", "Ignored", stats.ignored);
+    println!("{:<24} {:>5}", "Total files", stats.total_files);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_progress_bar_has_correct_length() {
+        let pb = create_scan_progress(42);
+        assert_eq!(pb.length(), Some(42));
+    }
+
+    #[test]
+    fn classify_progress_bar_has_correct_length() {
+        let pb = create_classify_progress(10);
+        assert_eq!(pb.length(), Some(10));
+    }
+
+    #[test]
+    fn print_summary_does_not_panic() {
+        let stats = PlanStats {
+            total_files: 100,
+            rule_matched: 40,
+            ai_classified: 30,
+            needs_review: 10,
+            collisions: 5,
+            ignored: 15,
+            skipped: 0,
+            limit_reached: false,
+        };
+        // Should not panic
+        print_summary(&stats);
+    }
+
+    #[test]
+    fn print_summary_with_zeros() {
+        let stats = PlanStats::default();
+        print_summary(&stats);
+    }
+
+    #[test]
+    fn print_summary_with_large_values() {
+        let stats = PlanStats {
+            total_files: 999_999,
+            rule_matched: 500_000,
+            ai_classified: 400_000,
+            needs_review: 50_000,
+            collisions: 10_000,
+            ignored: 39_999,
+            skipped: 0,
+            limit_reached: true,
+        };
+        // Should not panic with large values
+        print_summary(&stats);
+    }
 }

@@ -69,4 +69,27 @@ mod tests {
         assert_eq!(msg.role, "assistant");
         assert_eq!(msg.content, "Hi there");
     }
+
+    #[test]
+    fn chat_message_roundtrips() {
+        let msg = ChatMessage {
+            role: "system".to_string(),
+            content: "You are helpful.".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.role, msg.role);
+        assert_eq!(parsed.content, msg.content);
+    }
+
+    #[test]
+    fn chat_message_with_unicode() {
+        let msg = ChatMessage {
+            role: "user".to_string(),
+            content: "Héllo wörld 日本語".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.content, "Héllo wörld 日本語");
+    }
 }

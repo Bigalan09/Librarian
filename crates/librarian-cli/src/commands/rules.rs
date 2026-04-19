@@ -74,3 +74,102 @@ pub async fn suggest() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    #[test]
+    fn validate_valid_rules_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_path = dir.path().join("rules.yaml");
+        std::fs::write(
+            &rules_path,
+            "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n",
+        )
+        .unwrap();
+
+        let rule_set = librarian_rules::load_rules(&rules_path).unwrap();
+        assert_eq!(rule_set.rules.len(), 1);
+        assert_eq!(rule_set.rules[0].name, "PDFs");
+    }
+
+    #[test]
+    fn validate_empty_rules_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_path = dir.path().join("rules.yaml");
+        std::fs::write(&rules_path, "rules: []\n").unwrap();
+
+        let rule_set = librarian_rules::load_rules(&rules_path).unwrap();
+        assert!(rule_set.rules.is_empty());
+    }
+
+    #[test]
+    fn validate_missing_rules_file_returns_error() {
+        let path = PathBuf::from("/nonexistent/rules.yaml");
+        let result = librarian_rules::load_rules(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_invalid_yaml_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_path = dir.path().join("rules.yaml");
+        std::fs::write(&rules_path, "not: valid: yaml: [[[").unwrap();
+
+        let result = librarian_rules::load_rules(&rules_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn suggest_no_corrections_returns_empty() {
+        let corrections = Vec::new();
+        let suggestions = librarian_rules::suggest_rules(&corrections, "");
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn suggest_with_below_threshold_corrections() {
+        // Need at least 3 corrections with the same pattern
+        let corrections = vec![
+            librarian_rules::CorrectionRecord {
+                source_inbox: "Downloads".to_string(),
+                filetype: Some("pdf".to_string()),
+                corrected_path: PathBuf::from("/dest/Documents/a.pdf"),
+            },
+            librarian_rules::CorrectionRecord {
+                source_inbox: "Downloads".to_string(),
+                filetype: Some("pdf".to_string()),
+                corrected_path: PathBuf::from("/dest/Documents/b.pdf"),
+            },
+        ];
+        let suggestions = librarian_rules::suggest_rules(&corrections, "");
+        assert!(suggestions.is_empty(), "2 corrections should not be enough");
+    }
+
+    #[test]
+    fn suggest_with_sufficient_corrections() {
+        let corrections = vec![
+            librarian_rules::CorrectionRecord {
+                source_inbox: "Downloads".to_string(),
+                filetype: Some("pdf".to_string()),
+                corrected_path: PathBuf::from("/dest/Documents/a.pdf"),
+            },
+            librarian_rules::CorrectionRecord {
+                source_inbox: "Downloads".to_string(),
+                filetype: Some("pdf".to_string()),
+                corrected_path: PathBuf::from("/dest/Documents/b.pdf"),
+            },
+            librarian_rules::CorrectionRecord {
+                source_inbox: "Downloads".to_string(),
+                filetype: Some("pdf".to_string()),
+                corrected_path: PathBuf::from("/dest/Documents/c.pdf"),
+            },
+        ];
+        let suggestions = librarian_rules::suggest_rules(&corrections, "");
+        assert!(
+            !suggestions.is_empty(),
+            "3 corrections should produce a suggestion"
+        );
+    }
+}

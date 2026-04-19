@@ -291,4 +291,104 @@ mod tests {
         assert!(!store.is_empty());
         assert_eq!(store.len(), 1);
     }
+
+    #[test]
+    fn update_centroid_learning_rate_one_replaces() {
+        let mut store = CentroidStore::new();
+        let k = key("Downloads", "pdf", "Invoices");
+
+        store.update_centroid(k.clone(), &[1.0, 0.0], 1.0);
+        store.update_centroid(k.clone(), &[0.0, 1.0], 1.0);
+
+        let result = store.get(&k).unwrap();
+        assert!((result[0] - 0.0).abs() < 1e-6);
+        assert!((result[1] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn update_centroid_learning_rate_zero_preserves() {
+        let mut store = CentroidStore::new();
+        let k = key("Downloads", "pdf", "Invoices");
+
+        store.update_centroid(k.clone(), &[1.0, 0.0], 1.0);
+        store.update_centroid(k.clone(), &[0.0, 1.0], 0.0);
+
+        let result = store.get(&k).unwrap();
+        assert!((result[0] - 1.0).abs() < 1e-6);
+        assert!((result[1] - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/deep/centroids.msgpack");
+
+        let mut store = CentroidStore::new();
+        store.update_centroid(key("Downloads", "pdf", "Work"), &[1.0], 1.0);
+        store.save(&path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn cosine_similarity_mismatched_returns_zero() {
+        // The private cosine_similarity returns 0.0 for mismatched lengths
+        let result = cosine_similarity(&[1.0, 2.0], &[1.0, 2.0, 3.0]);
+        assert!((result - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn find_nearest_with_single_centroid() {
+        let mut store = CentroidStore::new();
+        store.update_centroid(key("Downloads", "pdf", "Only"), &[0.5, 0.5], 1.0);
+
+        let result = store.find_nearest("Downloads", "pdf", &[1.0, 0.0]);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, "Only");
+    }
+
+    #[test]
+    fn update_centroid_dimension_mismatch_replaces() {
+        let mut store = CentroidStore::new();
+        let k = key("Downloads", "pdf", "Invoices");
+
+        store.update_centroid(k.clone(), &[1.0, 0.0], 1.0);
+        // Update with a different dimension vector — should replace entirely
+        store.update_centroid(k.clone(), &[0.5, 0.5, 0.5], 0.5);
+
+        let result = store.get(&k).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result, &vec![0.5, 0.5, 0.5]);
+    }
+
+    #[test]
+    fn cosine_similarity_zero_magnitude_returns_zero() {
+        let result = cosine_similarity(&[0.0, 0.0], &[1.0, 0.0]);
+        assert!((result - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn default_is_empty() {
+        let store = CentroidStore::default();
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn centroids_for_scope_empty_when_no_match() {
+        let mut store = CentroidStore::new();
+        store.update_centroid(key("Downloads", "pdf", "Work"), &[1.0], 1.0);
+
+        let scoped = store.centroids_for_scope("Desktop", "png");
+        assert!(scoped.is_empty());
+    }
+
+    #[test]
+    fn load_corrupt_msgpack_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupt.msgpack");
+        std::fs::write(&path, b"this is not valid msgpack!!!").unwrap();
+
+        let result = CentroidStore::load(&path);
+        assert!(result.is_err());
+    }
 }

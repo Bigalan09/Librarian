@@ -50,14 +50,14 @@ impl CorrectionWatcher {
 
     /// Check for corrections by examining pending filesystem events.
     ///
-    /// Compares events against a manifest of known file hashes -> paths.
+    /// Compares events against a manifest of known file hashes -> (path, placement_time).
     /// If a known file hash appears at a new path, it is treated as a correction
     /// (if within the correction window).
     ///
-    /// `manifest` maps file_hash -> original_path (the path librarian placed it).
+    /// `manifest` maps file_hash -> (original_path, placement_time).
     pub fn check_for_corrections(
         &self,
-        manifest: &HashMap<String, PathBuf>,
+        manifest: &HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)>,
         correction_window_days: u32,
         corrections_path: &Path,
         decisions_path: &Path,
@@ -85,35 +85,33 @@ impl CorrectionWatcher {
                 }
 
                 // Hash the file to see if it matches a known placement
-                let hash = match hash_file(path) {
+                let hash = match librarian_core::hasher::hash_file_sync(path) {
                     Ok(h) => h,
                     Err(_) => continue,
                 };
 
-                if let Some(original_path) = manifest.get(&hash) {
+                if let Some((original_path, placement_time)) = manifest.get(&hash) {
                     // File hash matches a known placement but is at a different path
-                    if original_path != path {
-                        let placement_time = Utc::now(); // Approximate; real impl would look up actual placement time
-                        if is_within_correction_window(placement_time, correction_window_days) {
-                            let filetype =
-                                path.extension().map(|e| e.to_string_lossy().to_lowercase());
+                    if original_path != path
+                        && is_within_correction_window(*placement_time, correction_window_days)
+                    {
+                        let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
-                            let source_inbox = detect_source_inbox(original_path);
+                        let source_inbox = detect_source_inbox(original_path);
 
-                            let correction = Correction {
-                                original_path: original_path.clone(),
-                                corrected_path: path.clone(),
-                                file_hash: hash.clone(),
-                                source: CorrectionSource::Watched,
-                                corrected_tags: None,
-                                timestamp: Utc::now(),
-                                source_inbox,
-                                filetype,
-                            };
+                        let correction = Correction {
+                            original_path: original_path.clone(),
+                            corrected_path: path.clone(),
+                            file_hash: hash.clone(),
+                            source: CorrectionSource::Watched,
+                            corrected_tags: None,
+                            timestamp: Utc::now(),
+                            source_inbox,
+                            filetype,
+                        };
 
-                            record_correction(corrections_path, decisions_path, &correction)?;
-                            corrections.push(correction);
-                        }
+                        record_correction(corrections_path, decisions_path, &correction)?;
+                        corrections.push(correction);
                     }
                 }
             }
@@ -121,13 +119,6 @@ impl CorrectionWatcher {
 
         Ok(corrections)
     }
-}
-
-/// Hash a file using blake3.
-fn hash_file(path: &Path) -> anyhow::Result<String> {
-    let data = std::fs::read(path)?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
 }
 
 /// Attempt to detect the source inbox from the original path.
@@ -182,5 +173,160 @@ mod tests {
         let path = Path::new("/Users/me/Downloads/doc.pdf");
         let inbox = detect_source_inbox(path);
         assert_eq!(inbox, "Downloads");
+    }
+
+    #[test]
+    fn detect_source_inbox_desktop() {
+        let path = Path::new("/Users/me/Desktop/screenshot.png");
+        let inbox = detect_source_inbox(path);
+        assert_eq!(inbox, "Desktop");
+    }
+
+    #[test]
+    fn detect_source_inbox_nested_downloads() {
+        let path = Path::new("/Users/me/Downloads/subdir/file.txt");
+        let inbox = detect_source_inbox(path);
+        assert_eq!(inbox, "Downloads");
+    }
+
+    #[test]
+    fn check_corrections_with_no_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let watcher = CorrectionWatcher::new(&[dir.path().to_path_buf()]).unwrap();
+
+        let manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> = HashMap::new();
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn watcher_watch_dirs_returns_configured_dirs() {
+        let dir1 = tempfile::tempdir().unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+
+        let watcher =
+            CorrectionWatcher::new(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()])
+                .unwrap();
+
+        assert_eq!(watcher.watch_dirs().len(), 2);
+    }
+
+    #[test]
+    fn check_corrections_detects_moved_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Canonicalize to resolve macOS /var -> /private/var symlink
+        let base = dir.path().canonicalize().unwrap();
+        let watch_dir = base.join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = base.join("corrections.jsonl");
+        let decisions_path = base.join("decisions.jsonl");
+
+        // Create the watcher FIRST so it sees future events
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        // Write a file with known content so we know its hash
+        let content = b"unique test content for watcher";
+        let known_hash = blake3::hash(content).to_hex().to_string();
+
+        // Build manifest: known hash placed at original_path recently
+        let original_path = watch_dir.join("original.txt");
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(known_hash, (original_path, chrono::Utc::now()));
+
+        // Create a file at a DIFFERENT path (simulates user moving the file)
+        let new_path = watch_dir.join("subdir");
+        std::fs::create_dir_all(&new_path).unwrap();
+        let moved_file = new_path.join("moved.txt");
+        std::fs::write(&moved_file, content).unwrap();
+
+        // Give the watcher time to receive filesystem events
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        // The watcher should have detected the new file and matched its hash
+        for c in &corrections {
+            assert_eq!(c.corrected_path, moved_file);
+            assert_eq!(c.source, CorrectionSource::Watched);
+        }
+    }
+
+    #[test]
+    fn check_corrections_ignores_unknown_hashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let watch_dir = dir.path().join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        // Manifest has a hash that won't match any file we create
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(
+            "nonexistent_hash_value".to_string(),
+            (watch_dir.join("original.txt"), chrono::Utc::now()),
+        );
+
+        // Create a file with different content
+        std::fs::write(watch_dir.join("other.txt"), b"different content").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn check_corrections_respects_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let watch_dir = dir.path().join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        let content = b"window test content";
+        let known_hash = blake3::hash(content).to_hex().to_string();
+
+        // Place the file 30 days ago - outside 14-day correction window
+        let old_time = chrono::Utc::now() - chrono::Duration::days(30);
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(known_hash, (watch_dir.join("old_original.txt"), old_time));
+
+        // Create file in watched dir
+        std::fs::write(watch_dir.join("moved_old.txt"), content).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        // Should not detect as correction because placement was outside the window
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn detect_source_inbox_root_path() {
+        let path = Path::new("/file.txt");
+        let inbox = detect_source_inbox(path);
+        // Root path has no parent dir name - fallback
+        assert!(!inbox.is_empty());
     }
 }

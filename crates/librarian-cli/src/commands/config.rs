@@ -33,3 +33,28 @@ pub async fn edit() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_serialises_to_json() {
+        let cfg = config::AppConfig::default();
+        let json = serde_json::to_string_pretty(&cfg).unwrap();
+        assert!(json.contains("destination_root"));
+        assert!(json.contains("inbox_folders"));
+        assert!(json.contains("thresholds"));
+    }
+
+    #[test]
+    fn config_roundtrips_through_yaml() {
+        let cfg = config::AppConfig::default();
+        let yaml = serde_yaml::to_string(&cfg).unwrap();
+        let parsed: config::AppConfig = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(
+            cfg.destination_root.file_name(),
+            parsed.destination_root.file_name()
+        );
+    }
+}

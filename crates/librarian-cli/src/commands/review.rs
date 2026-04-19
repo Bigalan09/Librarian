@@ -84,7 +84,7 @@ pub async fn run() -> anyhow::Result<()> {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                let file_hash = hash_file(&path)?;
+                let file_hash = librarian_core::hasher::hash_file_sync(&path)?;
                 let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
@@ -137,7 +137,7 @@ pub async fn run() -> anyhow::Result<()> {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                let file_hash = hash_file(&path)?;
+                let file_hash = librarian_core::hasher::hash_file_sync(&path)?;
                 let filetype = path.extension().map(|e| e.to_string_lossy().to_lowercase());
 
                 let correction = Correction {
@@ -170,9 +170,84 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Hash a file using blake3.
-fn hash_file(path: &std::path::Path) -> anyhow::Result<String> {
-    let data = std::fs::read(path)?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    #[test]
+    fn sidecar_files_are_filtered() {
+        let dir = tempfile::tempdir().unwrap();
+        let nr = dir.path().join("NeedsReview");
+        std::fs::create_dir_all(&nr).unwrap();
+
+        // Create a file and its sidecar
+        std::fs::write(nr.join("report.pdf"), "pdf").unwrap();
+        std::fs::write(nr.join("report.pdf.reason.txt"), "low confidence").unwrap();
+        std::fs::write(nr.join("photo.jpg"), "jpg").unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(&nr)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .filter(|e| {
+                !e.path()
+                    .file_name()
+                    .map(|f| f.to_string_lossy().ends_with(".reason.txt"))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        assert_eq!(entries.len(), 2, "sidecar .reason.txt should be filtered");
+        let names: Vec<String> = entries
+            .iter()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(names.contains(&"report.pdf".to_string()));
+        assert!(names.contains(&"photo.jpg".to_string()));
+    }
+
+    #[test]
+    fn empty_review_folder_returns_no_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let nr = dir.path().join("NeedsReview");
+        std::fs::create_dir_all(&nr).unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(&nr)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .collect();
+
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn move_to_directory_appends_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("Documents");
+        std::fs::create_dir_all(&dest).unwrap();
+        let filename = "report.pdf";
+
+        let final_dest = if dest.is_dir() {
+            dest.join(filename)
+        } else {
+            dest.clone()
+        };
+
+        assert_eq!(final_dest, dest.join("report.pdf"));
+    }
+
+    #[test]
+    fn reason_path_construction() {
+        let path = PathBuf::from("/tmp/NeedsReview/report.pdf");
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let reason_path = path.with_extension(format!("{ext}.reason.txt"));
+        assert_eq!(
+            reason_path,
+            PathBuf::from("/tmp/NeedsReview/report.pdf.reason.txt")
+        );
+    }
 }

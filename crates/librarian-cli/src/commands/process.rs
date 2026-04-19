@@ -8,9 +8,11 @@ use librarian_classifier::{ConfidenceGate, VectorStore};
 use librarian_core::IgnoreEngine;
 use librarian_core::config::{self, ProviderType};
 use librarian_core::decision::ClassificationMethod;
-use librarian_core::file_entry::FinderColour;
+use librarian_core::file_entry::{FileEntry, FinderColour};
 use librarian_core::plan::{ActionType, Plan, PlanStats, PlannedAction};
 use librarian_core::walker;
+use librarian_providers::router::ErasedProvider;
+use librarian_providers::traits::ChatMessage;
 
 /// Scan the destination root for existing top-level folder names.
 ///
@@ -49,11 +51,15 @@ pub async fn run(
     llm_model: Option<String>,
     embed_model: Option<String>,
     rules_path: Option<PathBuf>,
-    _threshold: Option<f64>,
-    _dry_run: bool,
+    threshold: Option<f64>,
+    dry_run: bool,
     plan_name: Option<String>,
-    _rename: bool,
+    rename: bool,
 ) -> anyhow::Result<()> {
+    if dry_run {
+        tracing::info!("dry-run mode: plan will be saved but not applied");
+    }
+
     let mut cfg = config::load_default()?;
 
     // Validate config
@@ -86,6 +92,11 @@ pub async fn run(
     }
     if let Some(m) = embed_model {
         cfg.provider.embed_model = Some(m);
+    }
+    if let Some(t) = threshold {
+        cfg.thresholds.filename_embedding = t;
+        cfg.thresholds.content_embedding = t;
+        cfg.thresholds.llm_confidence = t;
     }
 
     let sources = if source.is_empty() {
@@ -166,9 +177,11 @@ pub async fn run(
     // Scan each source folder
     let mut all_entries = Vec::new();
     let scan_start = std::time::Instant::now();
+    let scan_pb = crate::output::create_scan_progress(sources.len() as u64);
     for src in &sources {
         if !src.exists() {
             tracing::warn!("source folder does not exist: {}", src.display());
+            scan_pb.inc(1);
             continue;
         }
         let inbox_name = src
@@ -176,6 +189,7 @@ pub async fn run(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "unknown".to_owned());
 
+        scan_pb.set_message(format!("Scanning {inbox_name}"));
         let ignore_engine = IgnoreEngine::new(src, None)?;
         let mut entries = walker::scan_directory(
             src,
@@ -194,7 +208,9 @@ pub async fn run(
         );
 
         all_entries.extend(entries);
+        scan_pb.inc(1);
     }
+    scan_pb.finish_and_clear();
 
     tracing::info!(
         elapsed_ms = scan_start.elapsed().as_millis() as u64,
@@ -226,6 +242,7 @@ pub async fn run(
 
     // Classify each file
     let classify_start = std::time::Instant::now();
+    let classify_pb = crate::output::create_classify_progress(all_entries.len() as u64);
     for entry in &all_entries {
         // Step 1: Rules (deterministic, always first)
         if let Some(rule) = engine.evaluate(entry) {
@@ -247,6 +264,7 @@ pub async fn run(
                 reason: Some(format!("matched rule: {}", rule.name)),
             });
             stats.rule_matched += 1;
+            classify_pb.inc(1);
             continue;
         }
 
@@ -302,8 +320,6 @@ pub async fn run(
                 });
                 stats.needs_review += 1;
             } else {
-                let destination_path = dest_root.join(&result.destination).join(&entry.name);
-
                 // Update vector store with the classification result's embedding
                 if let Some(ref embedding) = result.filename_embedding {
                     let ft = entry.extension.as_deref().unwrap_or("unknown");
@@ -317,6 +333,18 @@ pub async fn run(
                     );
                 }
 
+                // Optionally suggest a rename
+                let rename_to = if rename {
+                    let dest_str = result.destination.to_string_lossy();
+                    suggest_rename(provider, entry, &dest_str).await
+                } else {
+                    None
+                };
+
+                let final_name = rename_to.as_deref().unwrap_or(&entry.name);
+                let destination_path = dest_root.join(&result.destination).join(final_name);
+                let original_name = rename_to.as_ref().map(|_| entry.name.clone());
+
                 plan.actions.push(PlannedAction {
                     file_hash: entry.hash.clone(),
                     source_path: entry.path.clone(),
@@ -326,8 +354,8 @@ pub async fn run(
                     confidence: result.confidence,
                     tags: result.tags,
                     colour: result.colour,
-                    rename_to: None,
-                    original_name: None,
+                    rename_to,
+                    original_name,
                     reason: result.reason,
                 });
                 stats.ai_classified += 1;
@@ -349,7 +377,9 @@ pub async fn run(
             });
             stats.skipped += 1;
         }
+        classify_pb.inc(1);
     }
+    classify_pb.finish_and_clear();
 
     tracing::info!(
         elapsed_ms = classify_start.elapsed().as_millis() as u64,
@@ -377,18 +407,8 @@ pub async fn run(
     plan.save(&plans_dir)?;
 
     // Summary
-    println!("\nSummary");
-    println!("-------");
-    println!("Matched rules        {:>5}", plan.stats.rule_matched);
-    println!("AI classified        {:>5}", plan.stats.ai_classified);
-    println!(
-        "Low confidence       {:>5}  -> NeedsReview",
-        plan.stats.needs_review
-    );
-    println!("Skipped (no match)   {:>5}", plan.stats.skipped);
-    println!("Total files          {:>5}", plan.stats.total_files);
-    println!("Existing buckets     {:>5}", existing_buckets.len());
     println!();
+    crate::output::print_summary(&plan.stats);
     println!(
         "Plan saved: {} ({} files, {} moves)",
         plan.name,
@@ -400,9 +420,162 @@ pub async fn run(
     Ok(())
 }
 
+/// Ask the LLM to suggest a cleaner filename for a file.
+///
+/// Returns `None` if the current name is already clean or the LLM declines.
+async fn suggest_rename(
+    provider: &dyn ErasedProvider,
+    entry: &FileEntry,
+    destination: &str,
+) -> Option<String> {
+    let ext = entry.extension.as_deref().unwrap_or("");
+    let prompt = format!(
+        "Given a file named '{}' being placed into folder '{}', suggest a cleaner, \
+         more descriptive filename. Keep the extension '{ext}'. If the name is already \
+         fine, respond with just the word KEEP. Otherwise respond with just the new \
+         filename, nothing else.",
+        entry.name, destination,
+    );
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: "You are a file renaming assistant. Respond with only the suggested \
+                     filename or the word KEEP. No explanation."
+                .to_string(),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        },
+    ];
+    match provider.chat(messages, 0.1, 64).await {
+        Ok(resp) => {
+            let mut suggestion = resp.content.trim().to_string();
+            if suggestion.eq_ignore_ascii_case("KEEP") || suggestion == entry.name {
+                return None;
+            }
+            // Ensure the LLM preserved the extension
+            if !ext.is_empty() && !suggestion.ends_with(&format!(".{ext}")) {
+                suggestion = format!("{suggestion}.{ext}");
+            }
+            Some(suggestion)
+        }
+        Err(e) => {
+            tracing::debug!("Rename suggestion failed: {e}");
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
+    use librarian_providers::traits::{ChatResponse, ModelInfo, Provider};
+
+    struct MockRenameProvider {
+        response: String,
+    }
+
+    impl Provider for MockRenameProvider {
+        async fn validate(&self) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: "mock".to_string(),
+            })
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<ChatResponse> {
+            Ok(ChatResponse {
+                content: self.response.clone(),
+                model: "mock".to_string(),
+            })
+        }
+        async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.0]).collect())
+        }
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    fn make_entry(name: &str, ext: Option<&str>) -> FileEntry {
+        FileEntry {
+            path: PathBuf::from(format!("/tmp/{name}")),
+            name: name.to_string(),
+            extension: ext.map(|s| s.to_string()),
+            size_bytes: 100,
+            hash: String::new(),
+            created_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            modified_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            tags: Vec::new(),
+            colour: None,
+            source_inbox: "Downloads".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_new_name() {
+        let provider = MockRenameProvider {
+            response: "clean-report-2025.pdf".to_string(),
+        };
+        let entry = make_entry("IMG_4382.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, Some("clean-report-2025.pdf".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_on_keep() {
+        let provider = MockRenameProvider {
+            response: "KEEP".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_on_keep_lowercase() {
+        let provider = MockRenameProvider {
+            response: "keep".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_returns_none_when_same_name() {
+        let provider = MockRenameProvider {
+            response: "report.pdf".to_string(),
+        };
+        let entry = make_entry("report.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_trims_whitespace() {
+        let provider = MockRenameProvider {
+            response: "  renamed-file.txt  \n".to_string(),
+        };
+        let entry = make_entry("file.txt", Some("txt"));
+        let result = suggest_rename(&provider, &entry, "Docs").await;
+        assert_eq!(result, Some("renamed-file.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_appends_missing_extension() {
+        let provider = MockRenameProvider {
+            response: "clean-report".to_string(),
+        };
+        let entry = make_entry("IMG_4382.pdf", Some("pdf"));
+        let result = suggest_rename(&provider, &entry, "Documents").await;
+        assert_eq!(result, Some("clean-report.pdf".to_string()));
+    }
 
     #[test]
     fn discover_buckets_from_directory() {
@@ -433,5 +606,75 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let buckets = discover_buckets(dir.path());
         assert!(buckets.is_empty());
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_no_extension() {
+        let provider = MockRenameProvider {
+            response: "cleaned-name".to_string(),
+        };
+        let entry = make_entry("mystery_file", None);
+        let result = suggest_rename(&provider, &entry, "Misc").await;
+        // No extension, so no ".ext" appended
+        assert_eq!(result, Some("cleaned-name".to_string()));
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_provider_error_returns_none() {
+        struct FailingProvider;
+
+        impl Provider for FailingProvider {
+            async fn validate(&self) -> anyhow::Result<ModelInfo> {
+                Ok(ModelInfo {
+                    id: "mock".to_string(),
+                })
+            }
+            async fn chat(
+                &self,
+                _messages: Vec<ChatMessage>,
+                _temperature: f64,
+                _max_tokens: u32,
+            ) -> anyhow::Result<ChatResponse> {
+                anyhow::bail!("connection refused")
+            }
+            async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+                Ok(vec![])
+            }
+            fn name(&self) -> &str {
+                "failing"
+            }
+        }
+
+        let provider = FailingProvider;
+        let entry = make_entry("file.txt", Some("txt"));
+        let result = suggest_rename(&provider, &entry, "Docs").await;
+        assert_eq!(result, None, "provider error should return None");
+    }
+
+    #[test]
+    fn discover_buckets_ignores_files_and_dotfiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("Valid")).unwrap();
+        std::fs::write(root.join("file.txt"), "not a dir").unwrap();
+        std::fs::create_dir(root.join(".config")).unwrap();
+        std::fs::create_dir(root.join("_backup")).unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(buckets, vec!["Valid"]);
+    }
+
+    #[test]
+    fn discover_buckets_returns_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir(root.join("Zebra")).unwrap();
+        std::fs::create_dir(root.join("Alpha")).unwrap();
+        std::fs::create_dir(root.join("Middle")).unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(buckets, vec!["Alpha", "Middle", "Zebra"]);
     }
 }

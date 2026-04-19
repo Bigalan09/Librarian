@@ -434,6 +434,48 @@ mod tests {
     }
 
     #[test]
+    fn broken_symlink_treated_as_external() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("root");
+        fs::create_dir(&root).unwrap();
+
+        // Create a symlink pointing to a non-existent target.
+        let link = root.join("broken_link");
+        symlink(Path::new("/nonexistent_target_12345"), &link).unwrap();
+
+        assert!(
+            IgnoreEngine::is_external_symlink(&link, &root),
+            "broken symlink should be treated as external"
+        );
+    }
+
+    #[test]
+    fn librarianignore_negation_whitelists_file() {
+        let tmp = TempDir::new().unwrap();
+
+        // Ignore all .log files, but whitelist important.log
+        fs::write(
+            tmp.path().join(".librarianignore"),
+            "*.log\n!important.log\n",
+        )
+        .unwrap();
+
+        let ignored_log = tmp.path().join("debug.log");
+        fs::write(&ignored_log, b"").unwrap();
+
+        let whitelisted = tmp.path().join("important.log");
+        fs::write(&whitelisted, b"").unwrap();
+
+        let eng = IgnoreEngine::new(tmp.path(), Some(Path::new("/nonexistent/ignore"))).unwrap();
+
+        assert!(eng.is_ignored(&ignored_log), "debug.log should be ignored");
+        assert!(
+            !eng.is_ignored(&whitelisted),
+            "important.log should be whitelisted by negation"
+        );
+    }
+
+    #[test]
     fn regular_file_not_flagged_as_external_symlink() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("plain.txt");

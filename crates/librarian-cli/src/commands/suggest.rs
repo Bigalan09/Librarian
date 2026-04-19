@@ -539,4 +539,76 @@ mod tests {
         let raw = "result: {\"a\": 1} done";
         assert_eq!(extract_json(raw), "{\"a\": 1}");
     }
+
+    #[test]
+    fn extract_json_from_generic_code_fence() {
+        let raw = "```\n{\"key\": \"value\"}\n```";
+        assert_eq!(extract_json(raw), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn extract_json_no_braces_returns_trimmed() {
+        let raw = "  just plain text  ";
+        assert_eq!(extract_json(raw), "just plain text");
+    }
+
+    #[test]
+    fn parse_suggestion_invalid_json_returns_error() {
+        let result = parse_suggestion("not json at all");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn format_rules_yaml_unknown_match_field() {
+        let rules = vec![RuleSuggestion {
+            name: "Custom".to_string(),
+            match_field: "content".to_string(),
+            match_pattern: "TODO".to_string(),
+            destination: "Tasks".to_string(),
+            tags: vec![],
+        }];
+        let yaml = format_rules_yaml(&rules);
+        assert!(yaml.contains("content: \"TODO\""));
+    }
+
+    #[test]
+    fn format_rules_yaml_empty_tags_omitted() {
+        let rules = vec![RuleSuggestion {
+            name: "No tags".to_string(),
+            match_field: "extension".to_string(),
+            match_pattern: "txt".to_string(),
+            destination: "Text".to_string(),
+            tags: vec![],
+        }];
+        let yaml = format_rules_yaml(&rules);
+        assert!(!yaml.contains("tags:"));
+    }
+
+    #[test]
+    fn build_inventory_single_file_no_extension() {
+        let entries = vec![make_entry("Makefile", None, "Downloads")];
+        let inventory = build_inventory(&entries);
+        assert!(inventory.contains("Total files: 1"));
+        assert!(inventory.contains("(no extension)"));
+    }
+
+    #[test]
+    fn discover_existing_folders_max_depth() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Create folders 4 levels deep (max depth is 3)
+        std::fs::create_dir_all(root.join("A/B/C/D/E")).unwrap();
+
+        let folders = discover_existing_folders(root);
+        assert!(folders.contains(&"A".to_string()));
+        assert!(folders.contains(&"A/B".to_string()));
+        assert!(folders.contains(&"A/B/C".to_string()));
+        assert!(folders.contains(&"A/B/C/D".to_string()));
+        // D/E would be depth 4 from root, which is beyond max_depth of 3
+        assert!(
+            !folders.contains(&"A/B/C/D/E".to_string()),
+            "depth 4 should be excluded"
+        );
+    }
 }

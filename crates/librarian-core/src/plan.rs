@@ -988,6 +988,228 @@ mod tests {
         );
     }
 
+    // ----- PlanStats for Tag/Rename/Embedding variants ----------------------
+
+    #[test]
+    fn plan_stats_tag_and_rename_actions() {
+        let actions = vec![
+            PlannedAction {
+                action_type: ActionType::Tag,
+                classification_method: ClassificationMethod::Rule,
+                ..make_action(PathBuf::from("/a"), PathBuf::from("/b"), ActionType::Tag)
+            },
+            PlannedAction {
+                action_type: ActionType::Rename,
+                classification_method: ClassificationMethod::FilenameEmbedding,
+                ..make_action(PathBuf::from("/c"), PathBuf::from("/d"), ActionType::Rename)
+            },
+            PlannedAction {
+                action_type: ActionType::Move,
+                classification_method: ClassificationMethod::ContentEmbedding,
+                ..make_action(PathBuf::from("/e"), PathBuf::from("/f"), ActionType::Move)
+            },
+        ];
+        let stats = PlanStats::from_actions(&actions);
+        assert_eq!(stats.total_files, 3);
+        assert_eq!(stats.rule_matched, 1); // Tag with Rule
+        assert_eq!(stats.ai_classified, 2); // Rename+FilenameEmbedding, Move+ContentEmbedding
+    }
+
+    #[test]
+    fn plan_stats_classification_method_none() {
+        let actions = vec![PlannedAction {
+            action_type: ActionType::Move,
+            classification_method: ClassificationMethod::None,
+            ..make_action(PathBuf::from("/a"), PathBuf::from("/b"), ActionType::Move)
+        }];
+        let stats = PlanStats::from_actions(&actions);
+        assert_eq!(stats.total_files, 1);
+        assert_eq!(stats.rule_matched, 0);
+        assert_eq!(stats.ai_classified, 0);
+    }
+
+    // ----- Apply with missing source file ---------------------------------
+
+    #[test]
+    fn apply_missing_source_reports_error() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("dest");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&dest).unwrap();
+
+        let mut plan = Plan::new("missing-src", vec![dir.path().to_path_buf()], dest.clone());
+        plan.actions.push(make_action(
+            dir.path().join("nonexistent.txt"),
+            dest.join("nonexistent.txt"),
+            ActionType::Move,
+        ));
+
+        let report = plan.apply(&log, false).unwrap();
+        assert_eq!(report.moved, 0);
+        assert_eq!(report.skipped, 1);
+        assert!(report.errors[0].contains("does not exist"));
+    }
+
+    // ----- Apply rejects non-Draft ----------------------------------------
+
+    #[test]
+    fn apply_rejects_non_draft() {
+        let dir = tempdir().unwrap();
+        let log = dir.path().join("decisions.jsonl");
+
+        let mut plan = Plan::new("double-apply", vec![], PathBuf::from("/dest"));
+        plan.status = PlanStatus::Applied;
+
+        let result = plan.apply(&log, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not in Draft"));
+    }
+
+    // ----- Rollback rejects non-Applied -----------------------------------
+
+    #[test]
+    fn rollback_rejects_non_applied() {
+        let dir = tempdir().unwrap();
+        let log = dir.path().join("decisions.jsonl");
+
+        let mut plan = Plan::new("bad-rollback", vec![], PathBuf::from("/dest"));
+        // Still Draft
+        let result = plan.rollback(&log);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not in Applied"));
+    }
+
+    // ----- Apply with Rename action type ----------------------------------
+
+    #[test]
+    fn apply_rename_action() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&src).unwrap();
+
+        let file = src.join("old_name.txt");
+        std::fs::write(&file, b"rename me").unwrap();
+
+        let renamed = src.join("new_name.txt");
+
+        let mut plan = Plan::new("rename-test", vec![src.clone()], src.clone());
+        plan.actions.push(PlannedAction {
+            rename_to: Some("new_name.txt".to_owned()),
+            ..make_action(file.clone(), renamed.clone(), ActionType::Rename)
+        });
+
+        let report = plan.apply(&log, false).unwrap();
+        assert_eq!(report.moved, 1);
+        assert!(!file.exists());
+        assert!(renamed.exists());
+        assert_eq!(std::fs::read_to_string(&renamed).unwrap(), "rename me");
+    }
+
+    // ----- Apply with Tag-only action -------------------------------------
+
+    #[test]
+    fn apply_tag_only_action() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&src).unwrap();
+
+        let file = src.join("document.pdf");
+        std::fs::write(&file, b"content").unwrap();
+
+        let mut plan = Plan::new("tag-test", vec![src.clone()], src.clone());
+        plan.actions.push(PlannedAction {
+            tags: vec!["work".to_owned(), "urgent".to_owned()],
+            ..make_action(file.clone(), file.clone(), ActionType::Tag)
+        });
+
+        let report = plan.apply(&log, false).unwrap();
+        assert_eq!(report.tagged, 1);
+        assert!(file.exists(), "tag-only should not move the file");
+    }
+
+    // ----- Depth enforcement during apply ---------------------------------
+
+    #[test]
+    fn apply_depth_enforcement_skips_deep_paths() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source");
+        let dest = dir.path().join("dest");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+
+        let file = src.join("deep.txt");
+        std::fs::write(&file, b"too deep").unwrap();
+
+        // 4 levels deep exceeds MAX_DEPTH(3)
+        let deep_dest = dest.join("a/b/c/d/deep.txt");
+
+        let mut plan = Plan::new("depth-test", vec![src], dest);
+        plan.actions
+            .push(make_action(file.clone(), deep_dest, ActionType::Move));
+
+        let report = plan.apply(&log, false).unwrap();
+        assert_eq!(report.skipped, 1);
+        assert!(report.errors[0].contains("exceeds"));
+        assert!(file.exists(), "source should not be moved");
+    }
+
+    // ----- Plan::list skips malformed files --------------------------------
+
+    #[test]
+    fn list_plans_skips_malformed_json() {
+        let dir = tempdir().unwrap();
+        let plans_dir = dir.path().join("plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+
+        // Write a valid plan
+        let plan = Plan::new("valid", vec![], PathBuf::from("/d"));
+        plan.save(&plans_dir).unwrap();
+
+        // Write a malformed JSON file
+        std::fs::write(plans_dir.join("broken.json"), "not valid json{{{").unwrap();
+
+        let plans = Plan::list(&plans_dir).unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].name, "valid");
+    }
+
+    // ----- Backup with rollback from backup --------------------------------
+
+    #[test]
+    fn rollback_from_backup_restores_files() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source");
+        let dest = dir.path().join("dest");
+        let backup_dir = dir.path().join("backups");
+        let log = dir.path().join("decisions.jsonl");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+
+        let file = src.join("important.pdf");
+        std::fs::write(&file, b"critical data").unwrap();
+
+        let dest_file = dest.join("important.pdf");
+
+        let mut plan = Plan::new("backup-rollback", vec![src], dest);
+        plan.actions.push(make_action(
+            file.clone(),
+            dest_file.clone(),
+            ActionType::Move,
+        ));
+
+        plan.backup(&backup_dir).unwrap();
+        plan.apply(&log, false).unwrap();
+        assert!(dest_file.exists());
+        assert!(!file.exists());
+
+        plan.rollback(&log).unwrap();
+        assert!(file.exists());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "critical data");
+    }
+
     // ----- Rename format ---------------------------------------------------
 
     #[test]
@@ -995,6 +1217,20 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 4, 17).unwrap();
         let result = rename_file("IMG_1234.jpg", &date, "Tax Invoice", "jpg");
         assert_eq!(result, "2026-04-17_tax-invoice.jpg");
+    }
+
+    #[test]
+    fn rename_file_strips_dot_prefix_from_ext() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let result = rename_file("test.pdf", &date, "Report", ".pdf");
+        assert_eq!(result, "2026-01-01_report.pdf");
+    }
+
+    #[test]
+    fn rename_file_special_characters_in_topic() {
+        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        let result = rename_file("x.txt", &date, "Q2 2026 -- Final (v3)", "txt");
+        assert_eq!(result, "2026-06-15_q2-2026-final-v3.txt");
     }
 
     // ----- Save/load round-trip to disk ------------------------------------

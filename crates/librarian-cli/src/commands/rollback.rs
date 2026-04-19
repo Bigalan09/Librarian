@@ -10,20 +10,22 @@ pub async fn run(plan_name: Option<String>) -> anyhow::Result<()> {
         .join("decisions.jsonl");
 
     let plan_path = if let Some(name) = &plan_name {
-        plans_dir.join(format!("{name}.json"))
+        if name == super::LATEST_ALIAS {
+            // "latest" for rollback means most recent *applied* plan
+            most_recent_applied(&plans_dir)?
+        } else {
+            super::resolve_plan_path(&plans_dir, name)?
+        }
     } else {
-        // Find most recent applied plan
         most_recent_applied(&plans_dir)?
     };
 
-    if !plan_path.exists() {
-        anyhow::bail!(
+    let mut plan = Plan::load(&plan_path).map_err(|_| {
+        anyhow::anyhow!(
             "Plan not found at {}. Run 'librarian plans list' to see available plans.",
             plan_path.display()
-        );
-    }
-
-    let mut plan = Plan::load(&plan_path)?;
+        )
+    })?;
 
     if plan.status != PlanStatus::Applied {
         anyhow::bail!(
@@ -71,4 +73,61 @@ fn most_recent_applied(plans_dir: &std::path::Path) -> anyhow::Result<std::path:
             "No applied plans found in {}. Only plans with status 'Applied' can be rolled back.",
             plans_dir.display()
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_plan(name: &str) -> Plan {
+        Plan::new(
+            name,
+            vec![PathBuf::from("/tmp/inbox")],
+            PathBuf::from("/tmp/dest"),
+        )
+    }
+
+    #[test]
+    fn most_recent_applied_nonexistent_dir() {
+        let result = most_recent_applied(std::path::Path::new("/nonexistent/plans"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No plans directory")
+        );
+    }
+
+    #[test]
+    fn most_recent_applied_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = most_recent_applied(dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No applied plans"));
+    }
+
+    #[test]
+    fn most_recent_applied_skips_draft_plans() {
+        let dir = tempfile::tempdir().unwrap();
+        // Draft plan should be skipped
+        let plan = make_plan("draft-plan");
+        plan.save(dir.path()).unwrap();
+
+        let result = most_recent_applied(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn most_recent_applied_finds_applied_plan() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut plan = make_plan("applied-plan");
+        plan.status = PlanStatus::Applied;
+        plan.save(dir.path()).unwrap();
+
+        let result = most_recent_applied(dir.path()).unwrap();
+        assert!(result.to_string_lossy().contains(&plan.id));
+    }
 }

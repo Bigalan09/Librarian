@@ -195,4 +195,25 @@ mod tests {
             assert!(ex.contains("d.pdf"));
         }
     }
+
+    #[test]
+    fn max_count_zero_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let corrections_path = setup_corrections(dir.path());
+
+        let examples = select_examples(&corrections_path, "Downloads", None, 0).unwrap();
+        assert!(examples.is_empty());
+    }
+
+    #[test]
+    fn selects_most_recent_when_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let corrections_path = setup_corrections(dir.path());
+
+        // Downloads has 3 corrections: ages 5, 3, 2
+        // max_count=1 should pick the most recent (age 2)
+        let examples = select_examples(&corrections_path, "Downloads", None, 1).unwrap();
+        assert_eq!(examples.len(), 1);
+        assert!(examples[0].contains("c.txt"), "should be the most recent");
+    }
 }

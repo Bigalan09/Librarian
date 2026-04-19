@@ -14,21 +14,17 @@ pub async fn run(
         .join("history")
         .join("decisions.jsonl");
 
-    let plan_path = if let Some(name) = &plan_name {
-        plans_dir.join(format!("{name}.json"))
-    } else {
-        // Find most recent plan
-        most_recent_plan(&plans_dir)?
-    };
+    let plan_path = super::resolve_plan_path(
+        &plans_dir,
+        plan_name.as_deref().unwrap_or(super::LATEST_ALIAS),
+    )?;
 
-    if !plan_path.exists() {
-        anyhow::bail!(
+    let mut plan = Plan::load(&plan_path).map_err(|_| {
+        anyhow::anyhow!(
             "Plan not found at {}. Run 'librarian plans list' to see available plans.",
             plan_path.display()
-        );
-    }
-
-    let mut plan = Plan::load(&plan_path)?;
+        )
+    })?;
 
     if dry_run {
         println!("Dry run — showing what would happen:");
@@ -82,27 +78,71 @@ pub async fn run(
     Ok(())
 }
 
-fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
-    if !plans_dir.exists() {
-        anyhow::bail!("No plans directory found. Run 'librarian process' first.");
+#[cfg(test)]
+mod tests {
+    use crate::commands::{make_test_plan as make_plan, resolve_plan_path};
+
+    #[test]
+    fn most_recent_plan_nonexistent_dir() {
+        let result = resolve_plan_path(std::path::Path::new("/nonexistent/plans"), "latest");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No plans directory")
+        );
     }
 
-    let mut entries: Vec<_> = std::fs::read_dir(plans_dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "json")
-                .unwrap_or(false)
-        })
-        .collect();
+    #[test]
+    fn most_recent_plan_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_plan_path(dir.path(), "latest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No plans found"));
+    }
 
-    entries.sort_by_key(|e| std::cmp::Reverse(e.metadata().ok().and_then(|m| m.modified().ok())));
+    #[test]
+    fn most_recent_plan_ignores_non_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "not a plan").unwrap();
+        let result = resolve_plan_path(dir.path(), "latest");
+        assert!(result.is_err());
+    }
 
-    entries.first().map(|e| e.path()).ok_or_else(|| {
-        anyhow::anyhow!(
-            "No plans found in {}. Run 'librarian process' to generate a plan first.",
-            plans_dir.display()
-        )
-    })
+    #[test]
+    fn most_recent_plan_returns_json_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = make_plan("test-plan");
+        plan.save(dir.path()).unwrap();
+
+        let result = resolve_plan_path(dir.path(), "latest").unwrap();
+        assert!(result.extension().unwrap() == "json");
+    }
+
+    #[test]
+    fn most_recent_plan_picks_newest() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let p1 = make_plan("plan-a");
+        p1.save(dir.path()).unwrap();
+
+        // Small sleep to ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let p2 = make_plan("plan-b");
+        p2.save(dir.path()).unwrap();
+
+        let result = resolve_plan_path(dir.path(), "latest").unwrap();
+        let filename = result.file_name().unwrap().to_string_lossy();
+        // Should be the most recently saved (p2)
+        assert!(filename.contains(&p2.id));
+    }
+
+    #[test]
+    fn resolve_explicit_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_plan_path(dir.path(), "my-plan").unwrap();
+        assert_eq!(result, dir.path().join("my-plan.json"));
+    }
 }

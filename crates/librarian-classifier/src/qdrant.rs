@@ -224,4 +224,53 @@ mod tests {
         assert_eq!(hit.bucket, "Invoices");
         assert!((hit.score - 1.0).abs() < 1e-5);
     }
+
+    #[test]
+    fn load_nonexistent_creates_empty() {
+        let path = std::path::Path::new("/tmp/librarian_test_nonexistent_vectors.msgpack");
+        let store = InMemoryVectorStore::load(path).unwrap();
+        assert!(store.is_empty());
+    }
+
+    #[test]
+    fn find_nearest_is_scoped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.msgpack");
+        let mut store = InMemoryVectorStore::new(path);
+
+        store.upsert("Downloads", "pdf", "Invoices", &[1.0, 0.0], 1.0);
+        store.upsert("Desktop", "png", "Screenshots", &[0.0, 1.0], 1.0);
+
+        // Query Desktop scope should not find Downloads entries
+        let hit = store.find_nearest("Desktop", "png", &[1.0, 0.0]);
+        assert!(hit.is_some());
+        assert_eq!(hit.unwrap().bucket, "Screenshots");
+
+        // Wrong scope returns None
+        assert!(store.find_nearest("Desktop", "pdf", &[1.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn inner_exposes_centroid_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.msgpack");
+        let mut store = InMemoryVectorStore::new(path);
+
+        store.upsert("Downloads", "pdf", "Work", &[1.0, 0.0], 1.0);
+
+        let inner = store.inner();
+        assert!(!inner.is_empty());
+        assert_eq!(inner.len(), 1);
+        assert!(inner.all_buckets().contains(&"Work".to_string()));
+    }
+
+    #[test]
+    fn save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/deep/vectors.msgpack");
+        let mut store = InMemoryVectorStore::new(path.clone());
+        store.upsert("Downloads", "pdf", "Work", &[1.0], 1.0);
+        store.save().unwrap();
+        assert!(path.exists());
+    }
 }

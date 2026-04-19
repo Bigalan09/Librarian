@@ -232,6 +232,43 @@ rules:
     }
 
     #[test]
+    fn read_correction_records_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrections.jsonl");
+
+        let record = CorrectionRecord {
+            source_inbox: "Downloads".to_string(),
+            filetype: Some("pdf".to_string()),
+            corrected_path: PathBuf::from("/managed/Invoices/invoice.pdf"),
+        };
+        let line = serde_json::to_string(&record).unwrap();
+        std::fs::write(&path, format!("{}\n", line)).unwrap();
+
+        let records = read_correction_records(&path).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].source_inbox, "Downloads");
+    }
+
+    #[test]
+    fn read_correction_records_nonexistent_returns_empty() {
+        let result = read_correction_records(std::path::Path::new(
+            "/nonexistent_librarian_test/corrections.jsonl",
+        ))
+        .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn read_correction_records_malformed_line_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.jsonl");
+        std::fs::write(&path, "not valid json\n").unwrap();
+
+        let result = read_correction_records(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn no_filetype_pattern() {
         let corrections = vec![
             make_record("Downloads", None, "/managed/Misc/a.bin"),

@@ -30,3 +30,4 @@ assert_cmd.workspace = true
 tempfile.workspace = true
 mockito.workspace = true
 predicates.workspace = true
+serde_yaml.workspace = true
