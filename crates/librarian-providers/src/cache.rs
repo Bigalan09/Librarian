@@ -159,4 +159,29 @@ mod tests {
         // blake3 hex is 64 chars.
         assert_eq!(h1.len(), 64);
     }
+
+    #[test]
+    fn save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/deep/cache.msgpack");
+
+        let mut cache = EmbeddingCache::new();
+        cache.insert("key", vec![1.0, 2.0]);
+        cache.save(&path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn default_is_empty() {
+        let cache = EmbeddingCache::default();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn different_keys_produce_different_hashes() {
+        let h1 = hash_key("hello");
+        let h2 = hash_key("world");
+        assert_ne!(h1, h2);
+    }
 }

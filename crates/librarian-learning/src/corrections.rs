@@ -258,4 +258,29 @@ mod tests {
         let result = read_corrections(&path);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn read_corrections_skips_blank_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let corrections_path = dir.path().join("blanks.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let c = make_correction(CorrectionSource::Explicit);
+        record_correction(&corrections_path, &decisions_path, &c).unwrap();
+
+        // Insert blank lines
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&corrections_path)
+            .unwrap();
+        writeln!(f).unwrap();
+        writeln!(f, "   ").unwrap();
+
+        let c2 = make_correction(CorrectionSource::Watched);
+        record_correction(&corrections_path, &decisions_path, &c2).unwrap();
+
+        let corrections = read_corrections(&corrections_path).unwrap();
+        assert_eq!(corrections.len(), 2);
+    }
 }

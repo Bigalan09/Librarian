@@ -183,4 +183,23 @@ mod tests {
     fn done_with_crlf_trailing() {
         assert_eq!(parse_sse_line("data: [DONE]\r\n"), SseEvent::Done);
     }
+
+    #[test]
+    fn accumulate_empty_input() {
+        let content = accumulate_sse_content(std::iter::empty());
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn accumulate_comments_and_empty_lines_only() {
+        let lines = [": comment", "", ": another"];
+        let content = accumulate_sse_content(lines.iter().copied());
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn extract_delta_empty_choices() {
+        let json = r#"{"choices":[]}"#;
+        assert_eq!(extract_delta_content(json), None);
+    }
 }
