@@ -144,6 +144,34 @@ mod tests {
     }
 
     #[test]
+    fn file_entry_nonexistent_path_errors() {
+        let result = FileEntry::from_path(
+            std::path::PathBuf::from("/nonexistent_librarian_test/file.txt"),
+            "test",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn finder_colour_serialisation_round_trip() {
+        let colours = [
+            FinderColour::None,
+            FinderColour::Grey,
+            FinderColour::Green,
+            FinderColour::Purple,
+            FinderColour::Blue,
+            FinderColour::Yellow,
+            FinderColour::Red,
+            FinderColour::Orange,
+        ];
+        for colour in colours {
+            let json = serde_json::to_string(&colour).unwrap();
+            let restored: FinderColour = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, colour);
+        }
+    }
+
+    #[test]
     fn file_entry_serialisation_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("report.csv");

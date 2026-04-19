@@ -96,4 +96,22 @@ mod tests {
         let sim = cosine_similarity(&a, &b);
         assert!(sim.abs() < 1e-6, "expected 0.0, got {sim}");
     }
+
+    #[test]
+    #[should_panic(expected = "same dimension")]
+    fn mismatched_dimensions_panics() {
+        cosine_similarity(&[1.0, 2.0], &[1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn single_dimension_vectors() {
+        let sim = cosine_similarity(&[3.0], &[5.0]);
+        assert!((sim - 1.0).abs() < 1e-6, "expected ~1.0 for same-sign 1D");
+
+        let sim_neg = cosine_similarity(&[3.0], &[-5.0]);
+        assert!(
+            (sim_neg + 1.0).abs() < 1e-6,
+            "expected ~-1.0 for opposite 1D"
+        );
+    }
 }

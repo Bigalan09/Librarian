@@ -174,6 +174,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn openai_router_fails_on_unreachable() {
+        let config = ProviderConfig {
+            provider_type: ProviderType::OpenAi,
+            base_url: "http://127.0.0.1:1/v1".to_string(),
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        };
+        let result = ProviderRouter::new(&config).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn lmstudio_router_fails_on_unreachable() {
         let config = ProviderConfig {
             provider_type: ProviderType::LmStudio,

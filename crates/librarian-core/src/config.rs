@@ -365,6 +365,89 @@ max_moves_per_run: 100
     }
 
     #[test]
+    fn expand_tilde_with_tilde() {
+        let expanded = expand_tilde(Path::new("~/Documents/file.txt"));
+        assert!(!expanded.starts_with("~"));
+        assert!(expanded.to_string_lossy().contains("Documents/file.txt"));
+    }
+
+    #[test]
+    fn expand_tilde_without_tilde() {
+        let path = Path::new("/absolute/path/file.txt");
+        let expanded = expand_tilde(path);
+        assert_eq!(expanded, path);
+    }
+
+    #[test]
+    fn validate_warns_for_nonexistent_inbox() {
+        let cfg = AppConfig {
+            inbox_folders: vec![PathBuf::from("/nonexistent_librarian_test_path/inbox")],
+            ..Default::default()
+        };
+        let result = validate(&cfg);
+        assert!(result.is_ok());
+        let warnings = result.unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("inbox folder does not exist"))
+        );
+    }
+
+    #[test]
+    fn validate_warns_for_nonexistent_dest_parent() {
+        let cfg = AppConfig {
+            inbox_folders: vec![],
+            destination_root: PathBuf::from("/nonexistent_librarian_test/deeply/nested/root"),
+            ..Default::default()
+        };
+        let result = validate(&cfg);
+        assert!(result.is_ok());
+        let warnings = result.unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("destination root parent does not exist"))
+        );
+    }
+
+    #[test]
+    fn validate_multiple_bad_thresholds() {
+        let mut cfg = AppConfig {
+            inbox_folders: vec![],
+            ..Default::default()
+        };
+        cfg.thresholds.filename_embedding = -0.5;
+        cfg.thresholds.content_embedding = 2.0;
+        cfg.thresholds.llm_confidence = 1.5;
+        let result = validate(&cfg);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn load_from_file_expands_tildes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(
+            &path,
+            "inbox_folders:\n  - ~/Downloads\ndestination_root: ~/Managed\n",
+        )
+        .unwrap();
+
+        let cfg = load(&path).unwrap();
+        assert!(
+            !cfg.inbox_folders[0].starts_with("~"),
+            "tilde should be expanded"
+        );
+        assert!(
+            !cfg.destination_root.starts_with("~"),
+            "tilde should be expanded"
+        );
+    }
+
+    #[test]
     fn provider_type_deserialisation() {
         let yaml = "provider_type: openai";
         let pc: ProviderConfig = serde_yaml::from_str(yaml).unwrap();

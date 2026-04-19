@@ -332,4 +332,63 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn read_malformed_jsonl_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("bad.jsonl");
+        // Write a valid line followed by garbage
+        let d = Decision::new(
+            DecisionType::Move,
+            "h",
+            PathBuf::from("/f"),
+            "ok",
+            DecisionOutcome::Success,
+        );
+        append_decision(&log_path, &d).unwrap();
+        // Append a malformed line
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log_path)
+            .unwrap();
+        writeln!(f, "this is not valid json").unwrap();
+
+        let result = read_decisions(&log_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn append_decision_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a/b/c/decisions.jsonl");
+
+        let d = Decision::new(
+            DecisionType::Tag,
+            "hash",
+            PathBuf::from("/file.txt"),
+            "tagged",
+            DecisionOutcome::Success,
+        );
+        append_decision(&nested, &d).unwrap();
+
+        let decisions = read_decisions(&nested).unwrap();
+        assert_eq!(decisions.len(), 1);
+    }
+
+    #[test]
+    fn classification_method_serialises() {
+        let methods = [
+            ClassificationMethod::Rule,
+            ClassificationMethod::FilenameEmbedding,
+            ClassificationMethod::ContentEmbedding,
+            ClassificationMethod::Llm,
+            ClassificationMethod::None,
+        ];
+        for method in methods {
+            let json = serde_json::to_string(&method).unwrap();
+            let restored: ClassificationMethod = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, method);
+        }
+    }
 }

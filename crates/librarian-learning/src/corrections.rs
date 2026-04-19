@@ -212,4 +212,50 @@ mod tests {
         let corrections = read_corrections(Path::new("/nonexistent.jsonl")).unwrap();
         assert!(corrections.is_empty());
     }
+
+    #[test]
+    fn correction_window_zero_days() {
+        let recent = Utc::now();
+        assert!(!is_within_correction_window(recent, 0));
+    }
+
+    #[test]
+    fn correction_window_boundary() {
+        // Exactly window_days ago — uses < not <=, so this should be false
+        let exactly = Utc::now() - Duration::days(14);
+        assert!(!is_within_correction_window(exactly, 14));
+    }
+
+    #[test]
+    fn record_correction_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let corrections_path = dir.path().join("nested/a/corrections.jsonl");
+        let decisions_path = dir.path().join("nested/b/decisions.jsonl");
+
+        let c = make_correction(CorrectionSource::Explicit);
+        record_correction(&corrections_path, &decisions_path, &c).unwrap();
+
+        let corrections = read_corrections(&corrections_path).unwrap();
+        assert_eq!(corrections.len(), 1);
+    }
+
+    #[test]
+    fn correction_with_no_tags_round_trips() {
+        let mut c = make_correction(CorrectionSource::Review);
+        c.corrected_tags = None;
+
+        let json = serde_json::to_string(&c).unwrap();
+        let restored: Correction = serde_json::from_str(&json).unwrap();
+        assert!(restored.corrected_tags.is_none());
+    }
+
+    #[test]
+    fn read_malformed_corrections_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.jsonl");
+        std::fs::write(&path, "not valid json\n").unwrap();
+
+        let result = read_corrections(&path);
+        assert!(result.is_err());
+    }
 }

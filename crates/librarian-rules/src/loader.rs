@@ -320,6 +320,14 @@ rules:
     }
 
     #[test]
+    fn load_rules_io_error_for_missing_file() {
+        let result = load_rules(std::path::Path::new(
+            "/nonexistent_librarian_test/rules.yaml",
+        ));
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn load_rules_from_file() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("rules.yaml");

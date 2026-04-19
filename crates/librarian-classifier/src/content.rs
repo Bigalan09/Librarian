@@ -106,4 +106,40 @@ mod tests {
 
         assert!(extract_content(&file).await.is_none());
     }
+
+    #[tokio::test]
+    async fn nonexistent_txt_returns_none() {
+        let path = std::path::Path::new("/nonexistent_librarian_test/missing.txt");
+        assert!(extract_content(path).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn empty_text_file_returns_some() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("empty.txt");
+        tokio::fs::write(&file, "").await.unwrap();
+
+        let content = extract_content(&file).await;
+        assert_eq!(content, Some(String::new()));
+    }
+
+    #[tokio::test]
+    async fn uppercase_extension_handled() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("NOTES.TXT");
+        tokio::fs::write(&file, "uppercase ext").await.unwrap();
+
+        let content = extract_content(&file).await;
+        assert_eq!(content.unwrap(), "uppercase ext");
+    }
+
+    #[tokio::test]
+    async fn audio_file_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("song.mp3");
+        tokio::fs::write(&file, &[0xFF, 0xFB, 0x90, 0x00])
+            .await
+            .unwrap();
+        assert!(extract_content(&file).await.is_none());
+    }
 }

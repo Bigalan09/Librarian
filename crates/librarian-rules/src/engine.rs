@@ -439,4 +439,49 @@ rules:
 
         assert_eq!(engine.evaluate(&entry).unwrap().name, "Has TODOs");
     }
+
+    #[test]
+    fn expand_destination_literal_path() {
+        let entry = make_entry("file.pdf", Some("pdf"), 100, "/tmp/file.pdf", "Downloads");
+        let result = RuleEngine::expand_destination("Work/Invoices", &entry);
+        assert_eq!(result, "Work/Invoices");
+    }
+
+    #[test]
+    fn content_match_unreadable_file_skips() {
+        let engine = build_engine(
+            r#"
+rules:
+  - name: "Content rule"
+    match:
+      content: "regex:TODO"
+    destination: "todos"
+"#,
+        );
+
+        // File that doesn't exist — content match should fail gracefully
+        let entry = make_entry(
+            "missing.txt",
+            Some("txt"),
+            100,
+            "/nonexistent_librarian_test/missing.txt",
+            "Downloads",
+        );
+        assert!(engine.evaluate(&entry).is_none());
+    }
+
+    #[test]
+    fn rules_accessor_returns_loaded_rules() {
+        let engine = build_engine(
+            r#"
+rules:
+  - name: "Only rule"
+    match:
+      extension: "txt"
+    destination: "text-files"
+"#,
+        );
+        assert_eq!(engine.rules().len(), 1);
+        assert_eq!(engine.rules()[0].name, "Only rule");
+    }
 }

@@ -46,17 +46,8 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
+    use crate::commands::make_test_plan as make_plan;
     use librarian_core::plan::{Plan, PlanStats};
-
-    fn make_plan(name: &str) -> Plan {
-        Plan::new(
-            name,
-            vec![PathBuf::from("/tmp/inbox")],
-            PathBuf::from("/tmp/dest"),
-        )
-    }
 
     #[test]
     fn list_plans_returns_multiple() {

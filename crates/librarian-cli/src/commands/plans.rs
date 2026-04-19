@@ -128,15 +128,7 @@ pub async fn delete(name: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    fn make_plan(name: &str) -> Plan {
-        Plan::new(
-            name,
-            vec![PathBuf::from("/tmp/inbox")],
-            PathBuf::from("/tmp/dest"),
-        )
-    }
+    use crate::commands::make_test_plan as make_plan;
 
     #[test]
     fn list_plans_empty_dir() {

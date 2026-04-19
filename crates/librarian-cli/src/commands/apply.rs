@@ -14,7 +14,10 @@ pub async fn run(
         .join("history")
         .join("decisions.jsonl");
 
-    let plan_path = super::resolve_plan_path(&plans_dir, plan_name.as_deref().unwrap_or("latest"))?;
+    let plan_path = super::resolve_plan_path(
+        &plans_dir,
+        plan_name.as_deref().unwrap_or(super::LATEST_ALIAS),
+    )?;
 
     if !plan_path.exists() {
         anyhow::bail!(
@@ -79,17 +82,7 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::commands::resolve_plan_path;
-    use std::path::PathBuf;
-
-    fn make_plan(name: &str) -> Plan {
-        Plan::new(
-            name,
-            vec![PathBuf::from("/tmp/inbox")],
-            PathBuf::from("/tmp/dest"),
-        )
-    }
+    use crate::commands::{make_test_plan as make_plan, resolve_plan_path};
 
     #[test]
     fn most_recent_plan_nonexistent_dir() {
