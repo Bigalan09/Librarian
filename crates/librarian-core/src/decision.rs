@@ -377,6 +377,44 @@ mod tests {
     }
 
     #[test]
+    fn read_decisions_skips_blank_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("blanks.jsonl");
+
+        let d = Decision::new(
+            DecisionType::Move,
+            "h1",
+            PathBuf::from("/a"),
+            "moved",
+            DecisionOutcome::Success,
+        );
+        append_decision(&log_path, &d).unwrap();
+
+        // Insert blank lines
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log_path)
+            .unwrap();
+        writeln!(f).unwrap();
+        writeln!(f, "   ").unwrap();
+
+        let d2 = Decision::new(
+            DecisionType::Tag,
+            "h2",
+            PathBuf::from("/b"),
+            "tagged",
+            DecisionOutcome::Success,
+        );
+        append_decision(&log_path, &d2).unwrap();
+
+        let decisions = read_decisions(&log_path).unwrap();
+        assert_eq!(decisions.len(), 2);
+        assert_eq!(decisions[0].file_hash, "h1");
+        assert_eq!(decisions[1].file_hash, "h2");
+    }
+
+    #[test]
     fn classification_method_serialises() {
         let methods = [
             ClassificationMethod::Rule,

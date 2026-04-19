@@ -365,7 +365,7 @@ mod tests {
 
     impl Provider for FailingChatProvider {
         async fn validate(&self) -> anyhow::Result<ModelInfo> {
-            unimplemented!()
+            panic!("validate() not used in failing-chat tests")
         }
         async fn chat(
             &self,

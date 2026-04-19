@@ -52,10 +52,14 @@ pub async fn run(
     embed_model: Option<String>,
     rules_path: Option<PathBuf>,
     threshold: Option<f64>,
-    _dry_run: bool,
+    dry_run: bool,
     plan_name: Option<String>,
     rename: bool,
 ) -> anyhow::Result<()> {
+    if dry_run {
+        tracing::info!("dry-run mode: plan will be saved but not applied");
+    }
+
     let mut cfg = config::load_default()?;
 
     // Validate config

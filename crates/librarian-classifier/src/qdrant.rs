@@ -251,6 +251,20 @@ mod tests {
     }
 
     #[test]
+    fn inner_exposes_centroid_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.msgpack");
+        let mut store = InMemoryVectorStore::new(path);
+
+        store.upsert("Downloads", "pdf", "Work", &[1.0, 0.0], 1.0);
+
+        let inner = store.inner();
+        assert!(!inner.is_empty());
+        assert_eq!(inner.len(), 1);
+        assert!(inner.all_buckets().contains(&"Work".to_string()));
+    }
+
+    #[test]
     fn save_creates_parent_dirs() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested/deep/vectors.msgpack");
