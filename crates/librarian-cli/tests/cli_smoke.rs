@@ -14,6 +14,49 @@ fn librarian() -> Command {
     Command::cargo_bin("librarian").unwrap()
 }
 
+/// Minimal home with config, plans dir, and nothing else.
+fn setup_minimal_home() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join(".librarian");
+    std::fs::create_dir_all(home.join("plans")).unwrap();
+    std::fs::write(
+        home.join("config.yaml"),
+        "inbox_folders: []\ndestination_root: /tmp/managed\n",
+    )
+    .unwrap();
+    (dir, home)
+}
+
+/// Full home with inbox, destination, rules, history, cache, and backup dirs.
+fn setup_full_home() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join(".librarian");
+    let inbox = home.join("inbox");
+    let dest = home.join("managed");
+    std::fs::create_dir_all(home.join("plans")).unwrap();
+    std::fs::create_dir_all(home.join("history")).unwrap();
+    std::fs::create_dir_all(home.join("cache")).unwrap();
+    std::fs::create_dir_all(home.join("backup")).unwrap();
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let config = format!(
+        "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
+        inbox.display(),
+        dest.display(),
+        dest.display(),
+        dest.display(),
+    );
+    std::fs::write(home.join("config.yaml"), &config).unwrap();
+    std::fs::write(
+        home.join("rules.yaml"),
+        "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n",
+    )
+    .unwrap();
+
+    (dir, home, inbox, dest)
+}
+
 // ---------------------------------------------------------------------------
 // Basic CLI smoke tests
 // ---------------------------------------------------------------------------
@@ -263,14 +306,7 @@ fn status_with_no_plans() {
 
 #[test]
 fn plans_list_empty() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
+    let (dir, _home) = setup_minimal_home();
 
     librarian()
         .arg("plans")
@@ -282,14 +318,7 @@ fn plans_list_empty() {
 
 #[test]
 fn plans_show_nonexistent() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
+    let (dir, _home) = setup_minimal_home();
 
     librarian()
         .args(["plans", "show", "nonexistent-plan"])
@@ -301,14 +330,7 @@ fn plans_show_nonexistent() {
 
 #[test]
 fn plans_delete_nonexistent() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
+    let (dir, _home) = setup_minimal_home();
 
     librarian()
         .args(["plans", "delete", "nonexistent-plan"])
@@ -320,14 +342,7 @@ fn plans_delete_nonexistent() {
 
 #[test]
 fn plans_clean_empty() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
+    let (dir, _home) = setup_minimal_home();
 
     librarian()
         .args(["plans", "clean", "--days", "30"])
@@ -343,14 +358,7 @@ fn plans_clean_empty() {
 
 #[test]
 fn config_show_displays_json() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
+    let (dir, _home) = setup_minimal_home();
 
     librarian()
         .args(["config", "show"])
@@ -402,14 +410,8 @@ fn rules_validate_missing_file() {
 
 #[test]
 fn rules_suggest_no_corrections() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
+    let (dir, home) = setup_minimal_home();
     std::fs::create_dir_all(home.join("history")).unwrap();
-    std::fs::write(
-        home.join("config.yaml"),
-        "inbox_folders: []\ndestination_root: /tmp/managed\n",
-    )
-    .unwrap();
 
     librarian()
         .args(["rules", "suggest"])
@@ -568,34 +570,8 @@ fn completions_fish() {
 
 #[test]
 fn process_rules_only_produces_plan() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    let inbox = home.join("inbox");
-    let dest = home.join("managed");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::create_dir_all(home.join("history")).unwrap();
-    std::fs::create_dir_all(home.join("cache")).unwrap();
-    std::fs::create_dir_all(&inbox).unwrap();
-    std::fs::create_dir_all(&dest).unwrap();
+    let (dir, home, inbox, dest) = setup_full_home();
 
-    // Config pointing to our temp dirs
-    let config = format!(
-        "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(),
-        dest.display(),
-        dest.display(),
-        dest.display(),
-    );
-    std::fs::write(home.join("config.yaml"), &config).unwrap();
-
-    // Rules
-    std::fs::write(
-        home.join("rules.yaml"),
-        "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n    tags: [\"document\"]\n",
-    )
-    .unwrap();
-
-    // Create sample files
     std::fs::write(inbox.join("invoice.pdf"), "pdf content").unwrap();
     std::fs::write(inbox.join("photo.jpg"), "jpg content").unwrap();
 
@@ -614,7 +590,6 @@ fn process_rules_only_produces_plan() {
         .stdout(predicate::str::contains("Matched rules"))
         .stdout(predicate::str::contains("Plan saved"));
 
-    // Verify a plan file was created
     let plans: Vec<_> = std::fs::read_dir(home.join("plans"))
         .unwrap()
         .filter_map(|e| e.ok())
@@ -628,32 +603,8 @@ fn process_rules_only_produces_plan() {
 
 #[test]
 fn full_lifecycle_process_apply_rollback() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    let inbox = home.join("inbox");
-    let dest = home.join("managed");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::create_dir_all(home.join("history")).unwrap();
-    std::fs::create_dir_all(home.join("cache")).unwrap();
-    std::fs::create_dir_all(home.join("backup")).unwrap();
-    std::fs::create_dir_all(&inbox).unwrap();
-    std::fs::create_dir_all(&dest).unwrap();
+    let (dir, home, inbox, dest) = setup_full_home();
 
-    let config = format!(
-        "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(),
-        dest.display(),
-        dest.display(),
-        dest.display(),
-    );
-    std::fs::write(home.join("config.yaml"), &config).unwrap();
-    std::fs::write(
-        home.join("rules.yaml"),
-        "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n    tags: [\"document\"]\n",
-    )
-    .unwrap();
-
-    // Create a PDF in the inbox
     std::fs::write(inbox.join("report.pdf"), "report content").unwrap();
 
     // Step 1: Process
@@ -808,25 +759,7 @@ fn correct_retag_only() {
 
 #[test]
 fn plans_show_after_process() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    let inbox = home.join("inbox");
-    let dest = home.join("managed");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::create_dir_all(home.join("history")).unwrap();
-    std::fs::create_dir_all(home.join("cache")).unwrap();
-    std::fs::create_dir_all(&inbox).unwrap();
-    std::fs::create_dir_all(&dest).unwrap();
-
-    let config = format!(
-        "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(),
-        dest.display(),
-        dest.display(),
-        dest.display(),
-    );
-    std::fs::write(home.join("config.yaml"), &config).unwrap();
-    std::fs::write(home.join("rules.yaml"), "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n").unwrap();
+    let (dir, home, inbox, dest) = setup_full_home();
 
     std::fs::write(inbox.join("test.pdf"), "pdf").unwrap();
 
@@ -935,25 +868,7 @@ fn review_empty_needs_review() {
 
 #[test]
 fn apply_dry_run_does_not_move_files() {
-    let dir = tempdir().unwrap();
-    let home = dir.path().join(".librarian");
-    let inbox = home.join("inbox");
-    let dest = home.join("managed");
-    std::fs::create_dir_all(home.join("plans")).unwrap();
-    std::fs::create_dir_all(home.join("history")).unwrap();
-    std::fs::create_dir_all(home.join("cache")).unwrap();
-    std::fs::create_dir_all(&inbox).unwrap();
-    std::fs::create_dir_all(&dest).unwrap();
-
-    let config = format!(
-        "inbox_folders:\n  - {}\ndestination_root: {}\nneeds_review_path: {}/NeedsReview\ntrash_path: {}/Trash\n",
-        inbox.display(),
-        dest.display(),
-        dest.display(),
-        dest.display(),
-    );
-    std::fs::write(home.join("config.yaml"), &config).unwrap();
-    std::fs::write(home.join("rules.yaml"), "rules:\n  - name: \"PDFs\"\n    match:\n      extension: \"pdf\"\n    destination: \"Documents\"\n").unwrap();
+    let (dir, home, inbox, dest) = setup_full_home();
 
     std::fs::write(inbox.join("stay.pdf"), "stay here").unwrap();
 
@@ -993,4 +908,140 @@ fn apply_dry_run_does_not_move_files() {
     // File should still be in inbox
     assert!(inbox.join("stay.pdf").exists());
     assert!(!dest.join("Documents/stay.pdf").exists());
+}
+
+// ---------------------------------------------------------------------------
+// Watch command (early exit when no applied plans)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn watch_no_applied_plans_exits_early() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join(".librarian");
+    let dest = dir.path().join("managed");
+    std::fs::create_dir_all(home.join("plans")).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let config = format!("inbox_folders: []\ndestination_root: {}\n", dest.display(),);
+    std::fs::write(home.join("config.yaml"), &config).unwrap();
+
+    librarian()
+        .arg("watch")
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No applied plans"));
+}
+
+// ---------------------------------------------------------------------------
+// Apply with --aggressive but no backup
+// ---------------------------------------------------------------------------
+
+#[test]
+fn apply_aggressive_without_backup_fails() {
+    let (dir, home, inbox, dest) = setup_full_home();
+
+    std::fs::write(inbox.join("test.pdf"), "content").unwrap();
+
+    // Process first
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    let plan_files: Vec<_> = std::fs::read_dir(home.join("plans"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    let plan_name = plan_files[0]
+        .path()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    // Try aggressive without backup
+    librarian()
+        .args(["apply", "--plan", &plan_name, "--aggressive"])
+        .env("HOME", dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--aggressive requires --backup"));
+}
+
+// ---------------------------------------------------------------------------
+// Quiet and JSON output flags
+// ---------------------------------------------------------------------------
+
+#[test]
+fn quiet_flag_suppresses_output() {
+    let (dir, _home) = setup_minimal_home();
+
+    librarian()
+        .args(["--quiet", "plans"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn json_flag_produces_output() {
+    let (dir, _home) = setup_minimal_home();
+
+    librarian()
+        .args(["--json", "plans"])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn quiet_and_json_are_mutually_exclusive() {
+    librarian()
+        .args(["--quiet", "--json", "status"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+// ---------------------------------------------------------------------------
+// Apply latest alias
+// ---------------------------------------------------------------------------
+
+#[test]
+fn apply_latest_resolves_most_recent() {
+    let (dir, _home, inbox, dest) = setup_full_home();
+
+    std::fs::write(inbox.join("doc.pdf"), "content").unwrap();
+
+    // Process
+    librarian()
+        .args([
+            "process",
+            "--source",
+            inbox.to_str().unwrap(),
+            "--destination",
+            dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success();
+
+    // Apply using "latest" alias
+    librarian()
+        .args(["apply", "--plan", "latest", "--backup"])
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Apply complete"));
+
+    // File should be moved
+    assert!(dest.join("Documents/doc.pdf").exists());
 }

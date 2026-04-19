@@ -119,4 +119,20 @@ mod tests {
         let stats = PlanStats::default();
         print_summary(&stats);
     }
+
+    #[test]
+    fn print_summary_with_large_values() {
+        let stats = PlanStats {
+            total_files: 999_999,
+            rule_matched: 500_000,
+            ai_classified: 400_000,
+            needs_review: 50_000,
+            collisions: 10_000,
+            ignored: 39_999,
+            skipped: 0,
+            limit_reached: true,
+        };
+        // Should not panic with large values
+        print_summary(&stats);
+    }
 }
