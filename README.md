@@ -170,9 +170,23 @@ thresholds:
 | `config show` | Print current config |
 | `update` / `upgrade` | Check for and install updates from GitHub |
 | `update --check` | Check for updates without installing |
-| `uninstall` | Remove Librarian, its config, cache, and data |
+| `uninstall` | Remove Librarian and all its files from the system |
 | `completions <shell>` | Generate shell completions (bash, zsh, fish) |
 | `-v` / `--version` | Print version |
+
+## Uninstall
+
+```sh
+librarian uninstall
+```
+
+This removes everything Librarian has put on your system: the `~/.librarian` data directory (config, rules, history, cache, plans, backups), shell completions, any launchd agents or systemd units, and the binary itself. You'll be shown exactly what will be deleted and asked to confirm before anything is removed.
+
+To skip the confirmation prompt:
+
+```sh
+librarian uninstall --yes
+```
 
 ## Providers
 
