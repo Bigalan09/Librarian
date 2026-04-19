@@ -76,23 +76,42 @@ impl ClassificationPipeline {
         vector_store: Option<&dyn VectorStore>,
     ) -> ClassificationResult {
         // --- Tier 1: Rules engine ---
+        // When a rule matches, check whether its destination delegates to the AI
+        // pipeline via `{ai_suggest}`. If so, carry the rule's tags/colour forward
+        // and let the remaining tiers determine the destination.
+        let mut rule_tags: Vec<String> = Vec::new();
+        let mut rule_colour: Option<FinderColour> = None;
+        let mut rule_hint: Option<String> = None;
+
         if let Some(rule) = rules_engine.evaluate(entry) {
-            let destination = RuleEngine::expand_destination(&rule.destination, entry);
-            info!(
-                file = %entry.name,
-                rule = %rule.name,
-                "Classified by rule"
-            );
-            return ClassificationResult {
-                destination: PathBuf::from(destination),
-                method: ClassificationMethod::Rule,
-                confidence: Some(1.0),
-                tags: rule.tags.clone(),
-                colour: rule.colour,
-                reason: Some(format!("Matched rule: {}", rule.name)),
-                needs_review: false,
-                filename_embedding: None,
-            };
+            if RuleEngine::is_ai_suggested(&rule.destination) {
+                info!(
+                    file = %entry.name,
+                    rule = %rule.name,
+                    "Rule matched with {{ai_suggest}} — delegating destination to AI"
+                );
+                rule_tags = rule.tags.clone();
+                rule_colour = rule.colour;
+                rule_hint = Some(format!("Matched rule: {}", rule.name));
+                // fall through to AI tiers
+            } else {
+                let destination = RuleEngine::expand_destination(&rule.destination, entry);
+                info!(
+                    file = %entry.name,
+                    rule = %rule.name,
+                    "Classified by rule"
+                );
+                return ClassificationResult {
+                    destination: PathBuf::from(destination),
+                    method: ClassificationMethod::Rule,
+                    confidence: Some(1.0),
+                    tags: rule.tags.clone(),
+                    colour: rule.colour,
+                    reason: Some(format!("Matched rule: {}", rule.name)),
+                    needs_review: false,
+                    filename_embedding: None,
+                };
+            }
         }
 
         // --- Tier 2: Centroid similarity (from vector store) ---
@@ -114,19 +133,24 @@ impl ClassificationPipeline {
                         confidence = confidence,
                         "Classified by centroid similarity"
                     );
-                    return ClassificationResult {
-                        destination: PathBuf::from(destination),
-                        method: ClassificationMethod::FilenameEmbedding,
-                        confidence: Some(confidence),
-                        tags: Vec::new(),
-                        colour: None,
-                        reason: Some(format!(
-                            "Centroid similarity to '{}': {:.3}",
-                            hit.bucket, sim
-                        )),
-                        needs_review: false,
-                        filename_embedding: Some(embedding),
-                    };
+                    return merge_rule_metadata(
+                        ClassificationResult {
+                            destination: PathBuf::from(destination),
+                            method: ClassificationMethod::FilenameEmbedding,
+                            confidence: Some(confidence),
+                            tags: Vec::new(),
+                            colour: None,
+                            reason: Some(format!(
+                                "Centroid similarity to '{}': {:.3}",
+                                hit.bucket, sim
+                            )),
+                            needs_review: false,
+                            filename_embedding: Some(embedding),
+                        },
+                        rule_tags,
+                        rule_colour,
+                        rule_hint,
+                    );
                 }
                 GateResult::Escalate => {
                     debug!(
@@ -146,7 +170,7 @@ impl ClassificationPipeline {
                 try_filename_embedding(entry, provider, gate, cache, existing_buckets).await
             && let Some(r) = result
         {
-            return r;
+            return merge_rule_metadata(r, rule_tags, rule_colour, rule_hint);
         }
 
         // --- Tier 4: Content embedding (text files only) ---
@@ -160,12 +184,17 @@ impl ClassificationPipeline {
                 try_content_embedding(entry, provider, gate, cache, existing_buckets).await
             && let Some(r) = result
         {
-            return r;
+            return merge_rule_metadata(r, rule_tags, rule_colour, rule_hint);
         }
 
         // --- Tier 5: LLM classifier ---
-        match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples)
-            .await
+        let result = match LlmClassifier::classify_dyn(
+            provider,
+            entry,
+            existing_buckets,
+            few_shot_examples,
+        )
+        .await
         {
             Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
             Err(e) => {
@@ -181,8 +210,38 @@ impl ClassificationPipeline {
                     filename_embedding: None,
                 }
             }
+        };
+
+        merge_rule_metadata(result, rule_tags, rule_colour, rule_hint)
+    }
+}
+
+/// When an `{ai_suggest}` rule matched, merge its tags, colour, and hint into
+/// the AI-determined result. If no rule matched, the vectors are empty and this
+/// is a no-op.
+fn merge_rule_metadata(
+    mut result: ClassificationResult,
+    rule_tags: Vec<String>,
+    rule_colour: Option<FinderColour>,
+    rule_hint: Option<String>,
+) -> ClassificationResult {
+    if rule_tags.is_empty() && rule_colour.is_none() {
+        return result;
+    }
+    // Prepend rule tags, deduplicating
+    for tag in rule_tags {
+        if !result.tags.contains(&tag) {
+            result.tags.push(tag);
         }
     }
+    if result.colour.is_none() {
+        result.colour = rule_colour;
+    }
+    if let Some(hint) = rule_hint {
+        let existing = result.reason.take().unwrap_or_default();
+        result.reason = Some(format!("{hint}; {existing}"));
+    }
+    result
 }
 
 /// Try to classify via filename embedding similarity.
@@ -834,5 +893,50 @@ rules:
         // Should skip centroid tier (empty store) and match via filename embedding
         assert!(!result.needs_review);
         assert_eq!(result.method, ClassificationMethod::FilenameEmbedding);
+    }
+
+    #[tokio::test]
+    async fn ai_suggest_rule_delegates_to_llm_and_keeps_tags() {
+        let yaml = r#"
+rules:
+  - name: "PDFs to AI"
+    match:
+      extension: "pdf"
+    destination: "{ai_suggest}"
+    tags: ["document", "pdf"]
+    colour: green
+"#;
+        let ruleset = load_rules_from_str(yaml).unwrap();
+        let engine = RuleEngine::new(ruleset);
+        let gate = ConfidenceGate::new(Default::default());
+        // Zero vector -> embedding tiers won't match
+        let chat_response = r#"{"destination": "Finance/Reports", "confidence": 0.85, "tags": ["finance"], "reason": "Looks like a financial report"}"#;
+        let provider = MockProvider::new(vec![0.0, 0.0, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        let entry = make_entry("quarterly-report.pdf", Some("pdf"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &[],
+            &[],
+            None,
+        )
+        .await;
+
+        // Destination should come from the LLM, not the rule
+        assert_eq!(result.destination, PathBuf::from("Finance/Reports"));
+        assert_eq!(result.method, ClassificationMethod::Llm);
+        // Tags from the rule should be merged in
+        assert!(result.tags.contains(&"document".to_string()));
+        assert!(result.tags.contains(&"pdf".to_string()));
+        // LLM tags should also be present
+        assert!(result.tags.contains(&"finance".to_string()));
+        // Colour from the rule should be preserved
+        assert_eq!(result.colour, Some(FinderColour::Green));
+        assert!(!result.needs_review);
     }
 }
