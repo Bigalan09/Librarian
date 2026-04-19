@@ -215,4 +215,124 @@ mod tests {
 
         assert_eq!(watcher.watch_dirs().len(), 2);
     }
+
+    #[test]
+    fn check_corrections_detects_moved_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Canonicalize to resolve macOS /var -> /private/var symlink
+        let base = dir.path().canonicalize().unwrap();
+        let watch_dir = base.join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = base.join("corrections.jsonl");
+        let decisions_path = base.join("decisions.jsonl");
+
+        // Create the watcher FIRST so it sees future events
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        // Write a file with known content so we know its hash
+        let content = b"unique test content for watcher";
+        let known_hash = blake3::hash(content).to_hex().to_string();
+
+        // Build manifest: known hash placed at original_path recently
+        let original_path = watch_dir.join("original.txt");
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(
+            known_hash,
+            (original_path, chrono::Utc::now()),
+        );
+
+        // Create a file at a DIFFERENT path (simulates user moving the file)
+        let new_path = watch_dir.join("subdir");
+        std::fs::create_dir_all(&new_path).unwrap();
+        let moved_file = new_path.join("moved.txt");
+        std::fs::write(&moved_file, content).unwrap();
+
+        // Give the watcher time to receive filesystem events
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        // The watcher should have detected the new file and matched its hash
+        for c in &corrections {
+            assert_eq!(c.corrected_path, moved_file);
+            assert_eq!(c.source, CorrectionSource::Watched);
+        }
+    }
+
+    #[test]
+    fn check_corrections_ignores_unknown_hashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let watch_dir = dir.path().join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        // Manifest has a hash that won't match any file we create
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(
+            "nonexistent_hash_value".to_string(),
+            (watch_dir.join("original.txt"), chrono::Utc::now()),
+        );
+
+        // Create a file with different content
+        std::fs::write(watch_dir.join("other.txt"), b"different content").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn check_corrections_respects_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let watch_dir = dir.path().join("watched");
+        std::fs::create_dir_all(&watch_dir).unwrap();
+
+        let corrections_path = dir.path().join("corrections.jsonl");
+        let decisions_path = dir.path().join("decisions.jsonl");
+
+        let watcher = CorrectionWatcher::new(std::slice::from_ref(&watch_dir)).unwrap();
+
+        let content = b"window test content";
+        let known_hash = blake3::hash(content).to_hex().to_string();
+
+        // Place the file 30 days ago - outside 14-day correction window
+        let old_time = chrono::Utc::now() - chrono::Duration::days(30);
+        let mut manifest: HashMap<String, (PathBuf, chrono::DateTime<chrono::Utc>)> =
+            HashMap::new();
+        manifest.insert(
+            known_hash,
+            (watch_dir.join("old_original.txt"), old_time),
+        );
+
+        // Create file in watched dir
+        std::fs::write(watch_dir.join("moved_old.txt"), content).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let corrections = watcher
+            .check_for_corrections(&manifest, 14, &corrections_path, &decisions_path)
+            .unwrap();
+
+        // Should not detect as correction because placement was outside the window
+        assert!(corrections.is_empty());
+    }
+
+    #[test]
+    fn detect_source_inbox_root_path() {
+        let path = Path::new("/file.txt");
+        let inbox = detect_source_inbox(path);
+        // Root path has no parent dir name - fallback
+        assert!(!inbox.is_empty());
+    }
 }

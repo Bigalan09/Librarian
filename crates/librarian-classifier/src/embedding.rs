@@ -114,4 +114,165 @@ mod tests {
             "expected ~-1.0 for opposite 1D"
         );
     }
+
+    // --- Mock provider for async embedding tests ---
+
+    struct MockEmbedProvider {
+        embedding: Vec<f32>,
+    }
+
+    impl Provider for MockEmbedProvider {
+        async fn validate(&self) -> anyhow::Result<librarian_providers::traits::ModelInfo> {
+            Ok(librarian_providers::traits::ModelInfo {
+                id: "mock".to_string(),
+            })
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<librarian_providers::traits::ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<librarian_providers::traits::ChatResponse> {
+            unimplemented!()
+        }
+        async fn embed(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| self.embedding.clone()).collect())
+        }
+        fn name(&self) -> &str {
+            "mock-embed"
+        }
+    }
+
+    struct FailingEmbedProvider;
+
+    impl Provider for FailingEmbedProvider {
+        async fn validate(&self) -> anyhow::Result<librarian_providers::traits::ModelInfo> {
+            unimplemented!()
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<librarian_providers::traits::ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<librarian_providers::traits::ChatResponse> {
+            unimplemented!()
+        }
+        async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Err(anyhow::anyhow!("embedding service unavailable"))
+        }
+        fn name(&self) -> &str {
+            "failing"
+        }
+    }
+
+    struct EmptyEmbedProvider;
+
+    impl Provider for EmptyEmbedProvider {
+        async fn validate(&self) -> anyhow::Result<librarian_providers::traits::ModelInfo> {
+            unimplemented!()
+        }
+        async fn chat(
+            &self,
+            _messages: Vec<librarian_providers::traits::ChatMessage>,
+            _temperature: f64,
+            _max_tokens: u32,
+        ) -> anyhow::Result<librarian_providers::traits::ChatResponse> {
+            unimplemented!()
+        }
+        async fn embed(&self, _texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(Vec::new())
+        }
+        fn name(&self) -> &str {
+            "empty"
+        }
+    }
+
+    #[tokio::test]
+    async fn embed_text_returns_single_vector() {
+        let provider = MockEmbedProvider {
+            embedding: vec![0.1, 0.2, 0.3],
+        };
+        let result = embed_text(&provider, "hello world").await.unwrap();
+        assert_eq!(result, vec![0.1, 0.2, 0.3]);
+    }
+
+    #[tokio::test]
+    async fn embed_text_dyn_returns_single_vector() {
+        let provider = MockEmbedProvider {
+            embedding: vec![0.5, 0.5],
+        };
+        let erased: &dyn ErasedProvider = &provider;
+        let result = embed_text_dyn(erased, "test input").await.unwrap();
+        assert_eq!(result, vec![0.5, 0.5]);
+    }
+
+    #[tokio::test]
+    async fn embed_batch_returns_multiple_vectors() {
+        let provider = MockEmbedProvider {
+            embedding: vec![1.0, 0.0],
+        };
+        let texts = vec!["one".to_string(), "two".to_string(), "three".to_string()];
+        let results = embed_batch(&provider, texts).await.unwrap();
+        assert_eq!(results.len(), 3);
+        for v in &results {
+            assert_eq!(v, &vec![1.0, 0.0]);
+        }
+    }
+
+    #[tokio::test]
+    async fn embed_text_propagates_provider_error() {
+        let provider = FailingEmbedProvider;
+        let result = embed_text(&provider, "fail").await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("embedding service unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn embed_text_dyn_propagates_provider_error() {
+        let provider = FailingEmbedProvider;
+        let erased: &dyn ErasedProvider = &provider;
+        let result = embed_text_dyn(erased, "fail").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn embed_text_errors_on_empty_response() {
+        let provider = EmptyEmbedProvider;
+        let result = embed_text(&provider, "empty").await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no embeddings")
+        );
+    }
+
+    #[tokio::test]
+    async fn embed_text_dyn_errors_on_empty_response() {
+        let provider = EmptyEmbedProvider;
+        let erased: &dyn ErasedProvider = &provider;
+        let result = embed_text_dyn(erased, "empty").await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no embeddings")
+        );
+    }
+
+    #[tokio::test]
+    async fn embed_batch_empty_input() {
+        let provider = MockEmbedProvider {
+            embedding: vec![1.0],
+        };
+        let results = embed_batch(&provider, Vec::new()).await.unwrap();
+        assert!(results.is_empty());
+    }
 }

@@ -641,4 +641,210 @@ rules:
         assert_eq!(result.destination, PathBuf::from("Personal"));
         assert!(!result.needs_review);
     }
+
+    // --- EmbeddingCache unit tests ---
+
+    #[test]
+    fn embedding_cache_insert_and_get() {
+        let mut cache = EmbeddingCache::new();
+        assert!(cache.get("foo").is_none());
+
+        cache.insert("foo".to_string(), vec![1.0, 2.0]);
+        let v = cache.get("foo").unwrap();
+        assert_eq!(v, &vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn embedding_cache_overwrite() {
+        let mut cache = EmbeddingCache::new();
+        cache.insert("key".to_string(), vec![1.0]);
+        cache.insert("key".to_string(), vec![2.0]);
+        assert_eq!(cache.get("key").unwrap(), &vec![2.0]);
+    }
+
+    #[test]
+    fn embedding_cache_multiple_keys() {
+        let mut cache = EmbeddingCache::new();
+        cache.insert("a".to_string(), vec![1.0]);
+        cache.insert("b".to_string(), vec![2.0]);
+        cache.insert("c".to_string(), vec![3.0]);
+        assert_eq!(cache.get("a").unwrap(), &vec![1.0]);
+        assert_eq!(cache.get("b").unwrap(), &vec![2.0]);
+        assert_eq!(cache.get("c").unwrap(), &vec![3.0]);
+        assert!(cache.get("d").is_none());
+    }
+
+    // --- Pipeline: content embedding tier ---
+
+    #[tokio::test]
+    async fn content_embedding_classifies_text_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("notes.txt");
+        std::fs::write(&file_path, "Meeting notes about quarterly budget review").unwrap();
+
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default());
+        // Same embedding for everything -> cosine similarity = 1.0
+        let chat_response =
+            r#"{"destination": "Misc", "confidence": 0.9, "tags": [], "reason": "fallback"}"#;
+        let provider = MockProvider::new(vec![1.0, 0.0, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        let entry = FileEntry {
+            path: file_path,
+            name: "notes.txt".to_string(),
+            extension: Some("txt".to_string()),
+            size_bytes: 100,
+            hash: String::new(),
+            created_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            modified_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            tags: Vec::new(),
+            colour: None,
+            source_inbox: "Downloads".to_string(),
+        };
+
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &["Finance".to_string()],
+            &[],
+            None,
+        )
+        .await;
+
+        // With identical embeddings (sim=1.0), should be accepted by filename embedding tier
+        assert!(!result.needs_review);
+        assert!(result.confidence.unwrap() >= 0.80);
+    }
+
+    // --- Pipeline: all tiers fail ---
+
+    #[tokio::test]
+    async fn all_tiers_fail_returns_needs_review() {
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default());
+        // Zero vector -> cosine similarity will be 0
+        // Invalid JSON -> LLM parse fails
+        let provider = MockProvider::new(vec![0.0, 0.0], "not valid json");
+        let mut cache = EmbeddingCache::new();
+
+        let entry = make_entry("mystery.bin", Some("bin"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &[],
+            &[],
+            None,
+        )
+        .await;
+
+        assert!(result.needs_review);
+        assert_eq!(result.method, ClassificationMethod::None);
+        assert!(result.reason.unwrap().contains("failed"));
+    }
+
+    // --- Pipeline: LLM tier with NeedsReview confidence ---
+
+    #[tokio::test]
+    async fn llm_low_confidence_flags_needs_review() {
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default()); // LLM threshold = 0.70
+        let chat_response = r#"{"destination": "Maybe", "confidence": 0.40, "tags": [], "reason": "Not confident"}"#;
+        let provider = MockProvider::new(vec![0.0, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        let entry = make_entry("ambiguous.dat", Some("dat"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &[],
+            &[],
+            None,
+        )
+        .await;
+
+        assert!(result.needs_review);
+        assert_eq!(result.method, ClassificationMethod::Llm);
+        assert!(result.confidence.unwrap() < 0.70);
+    }
+
+    // --- Pipeline: rule match with tags and colour ---
+
+    #[tokio::test]
+    async fn rule_match_preserves_tags_and_colour() {
+        let yaml = r#"
+rules:
+  - name: "Screenshots"
+    match:
+      filename: "Screenshot*"
+    destination: "Screenshots"
+    tags: ["screenshot", "image"]
+    colour: blue
+"#;
+        let ruleset = load_rules_from_str(yaml).unwrap();
+        let engine = RuleEngine::new(ruleset);
+        let gate = ConfidenceGate::new(Default::default());
+        let provider = MockProvider::new(vec![0.0], "{}");
+        let mut cache = EmbeddingCache::new();
+
+        let entry = make_entry("Screenshot 2025-01-15.png", Some("png"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &[],
+            &[],
+            None,
+        )
+        .await;
+
+        assert_eq!(result.destination, PathBuf::from("Screenshots"));
+        assert!(result.tags.contains(&"screenshot".to_string()));
+        assert!(result.tags.contains(&"image".to_string()));
+        assert_eq!(result.confidence, Some(1.0));
+    }
+
+    // --- Pipeline: empty vector store is skipped ---
+
+    #[tokio::test]
+    async fn empty_vector_store_skips_centroid_tier() {
+        let engine = empty_engine();
+        let gate = ConfidenceGate::new(Default::default());
+        let chat_response = r#"{"destination": "Docs", "confidence": 0.9, "tags": [], "reason": "ok"}"#;
+        let provider = MockProvider::new(vec![1.0, 0.0], chat_response);
+        let mut cache = EmbeddingCache::new();
+
+        // Empty vector store
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.msgpack");
+        let vs = crate::qdrant::InMemoryVectorStore::new(path);
+
+        let entry = make_entry("test.xyz", Some("xyz"));
+        let result = ClassificationPipeline::classify(
+            &entry,
+            &engine,
+            &provider,
+            &gate,
+            &mut cache,
+            &["Docs".to_string()],
+            &[],
+            Some(&vs),
+        )
+        .await;
+
+        // Should skip centroid tier (empty store) and match via filename embedding
+        assert!(!result.needs_review);
+        assert_eq!(result.method, ClassificationMethod::FilenameEmbedding);
+    }
 }
