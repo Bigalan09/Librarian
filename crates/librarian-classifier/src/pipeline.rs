@@ -188,29 +188,25 @@ impl ClassificationPipeline {
         }
 
         // --- Tier 5: LLM classifier ---
-        let result = match LlmClassifier::classify_dyn(
-            provider,
-            entry,
-            existing_buckets,
-            few_shot_examples,
-        )
-        .await
-        {
-            Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
-            Err(e) => {
-                debug!(file = %entry.name, error = %e, "LLM classification failed");
-                ClassificationResult {
-                    destination: PathBuf::from("NeedsReview"),
-                    method: ClassificationMethod::None,
-                    confidence: None,
-                    tags: Vec::new(),
-                    colour: None,
-                    reason: Some(format!("All classification tiers failed: {e}")),
-                    needs_review: true,
-                    filename_embedding: None,
+        let result =
+            match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples)
+                .await
+            {
+                Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
+                Err(e) => {
+                    debug!(file = %entry.name, error = %e, "LLM classification failed");
+                    ClassificationResult {
+                        destination: PathBuf::from("NeedsReview"),
+                        method: ClassificationMethod::None,
+                        confidence: None,
+                        tags: Vec::new(),
+                        colour: None,
+                        reason: Some(format!("All classification tiers failed: {e}")),
+                        needs_review: true,
+                        filename_embedding: None,
+                    }
                 }
-            }
-        };
+            };
 
         merge_rule_metadata(result, rule_tags, rule_colour, rule_hint)
     }

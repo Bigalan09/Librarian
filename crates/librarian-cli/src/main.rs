@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 mod commands;
 mod output;
@@ -7,17 +7,11 @@ mod output;
 #[command(
     name = "librarian",
     version,
-    about = "Organise files using rules and AI",
-    // We override the version short flag from -V to -v below via mut_arg.
-    disable_version_flag = true,
+    about = "Organise files using rules and AI"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-
-    /// Print version
-    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
-    version: (),
 
     /// Enable verbose (DEBUG-level) logging
     #[arg(long, global = true)]
@@ -247,7 +241,18 @@ enum ConfigAction {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    // Override clap's default -V to -v for version
+    let matches = Cli::command()
+        .disable_version_flag(true)
+        .arg(
+            clap::Arg::new("version")
+                .short('v')
+                .long("version")
+                .action(clap::ArgAction::Version)
+                .help("Print version"),
+        )
+        .get_matches();
+    let cli = Cli::from_arg_matches(&matches)?;
 
     // Validate mutual exclusion of output flags
     let output_flags = [cli.verbose, cli.json, cli.quiet];

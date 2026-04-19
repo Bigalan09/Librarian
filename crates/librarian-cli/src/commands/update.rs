@@ -16,9 +16,7 @@ fn strip_v(tag: &str) -> &str {
 
 /// Fetch the latest release tag from GitHub.
 async fn fetch_latest_release() -> anyhow::Result<GitHubRelease> {
-    let url = format!(
-        "https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-    );
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/latest");
 
     let client = reqwest::Client::new();
     let resp = client
@@ -56,9 +54,7 @@ pub async fn run(check_only: bool) -> anyhow::Result<()> {
     println!("Release: {}", release.html_url);
 
     if check_only {
-        println!(
-            "\nRun `librarian update` to install the update."
-        );
+        println!("\nRun `librarian update` to install the update.");
         return Ok(());
     }
 
