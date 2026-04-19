@@ -1118,6 +1118,7 @@ dependencies = [
  "librarian-rules",
  "mockito",
  "predicates",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -245,7 +245,10 @@ pub async fn run(
     let classify_pb = crate::output::create_classify_progress(all_entries.len() as u64);
     for entry in &all_entries {
         // Step 1: Rules (deterministic, always first)
-        if let Some(rule) = engine.evaluate(entry) {
+        // Rules with {ai_suggest} destinations fall through to AI classification.
+        if let Some(rule) = engine.evaluate(entry)
+            && !librarian_rules::RuleEngine::is_ai_suggested(&rule.destination)
+        {
             let dest_dir =
                 librarian_rules::RuleEngine::expand_destination(&rule.destination, entry);
             let destination_path = dest_root.join(&dest_dir).join(&entry.name);

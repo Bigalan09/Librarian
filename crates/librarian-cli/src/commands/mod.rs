@@ -9,6 +9,7 @@ pub mod rollback;
 pub mod rules;
 pub mod status;
 pub mod suggest;
+pub mod update;
 pub mod watch;
 
 pub(crate) const LATEST_ALIAS: &str = "latest";

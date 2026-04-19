@@ -7,11 +7,17 @@ mod output;
 #[command(
     name = "librarian",
     version,
-    about = "Organise files using rules and AI"
+    about = "Organise files using rules and AI",
+    // We override the version short flag from -V to -v below via mut_arg.
+    disable_version_flag = true,
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Print version
+    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
+    version: (),
 
     /// Enable verbose (DEBUG-level) logging
     #[arg(long, global = true)]
@@ -176,6 +182,21 @@ enum Commands {
         action: ConfigAction,
     },
 
+    /// Check for and install updates from GitHub
+    Update {
+        /// Only check, don't install
+        #[arg(long)]
+        check: bool,
+    },
+
+    /// Alias for `update`
+    #[command(hide = true)]
+    Upgrade {
+        /// Only check, don't install
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for
@@ -311,6 +332,9 @@ async fn main() -> anyhow::Result<()> {
             ConfigAction::Show => commands::config::show().await,
             ConfigAction::Edit => commands::config::edit().await,
         },
+        Commands::Update { check } | Commands::Upgrade { check } => {
+            commands::update::run(check).await
+        }
         Commands::Completions { shell } => {
             clap_complete::generate(
                 shell,

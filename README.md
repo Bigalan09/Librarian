@@ -62,6 +62,20 @@ rules:
     destination: "{year}/{month}/Screenshots"
 ```
 
+If you want the AI to decide where a file goes but still apply tags and colours from a rule, use `{ai_suggest}` as the destination:
+
+```yaml
+rules:
+  - name: "PDFs"
+    match:
+      extension: "pdf"
+    destination: "{ai_suggest}"
+    tags: [document, pdf]
+    colour: green
+```
+
+The rule still matches (tagging and colouring the file), but the folder placement is delegated to the AI classification pipeline.
+
 Validate your rules are correct:
 
 ```sh
@@ -154,7 +168,10 @@ thresholds:
 | `watch` | Watch destination for manual corrections (passive learning) |
 | `review` | Walk through files that need human review |
 | `config show` | Print current config |
+| `update` / `upgrade` | Check for and install updates from GitHub |
+| `update --check` | Check for updates without installing |
 | `completions <shell>` | Generate shell completions (bash, zsh, fish) |
+| `-v` / `--version` | Print version |
 
 ## Providers
 
@@ -165,4 +182,4 @@ Librarian works with any OpenAI-compatible API:
 
 ## Licence
 
-MIT
+GPL-3.0 -- see [LICENSE](LICENSE) for details.

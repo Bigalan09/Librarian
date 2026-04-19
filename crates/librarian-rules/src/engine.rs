@@ -5,6 +5,11 @@ use librarian_core::file_entry::FileEntry;
 
 use crate::loader::{MatchCriteria, Rule, RuleSet};
 
+/// Marker template variable that delegates destination to the AI pipeline.
+/// When a rule's destination is (or contains) this marker, the rule still
+/// matches for tags/colour, but the actual destination is AI-suggested.
+pub const AI_SUGGEST_MARKER: &str = "{ai_suggest}";
+
 /// The rule matching engine. Holds a compiled `RuleSet` and evaluates
 /// `FileEntry` values against the rules in definition order (first match wins).
 #[derive(Debug, Clone)]
@@ -47,6 +52,11 @@ impl RuleEngine {
             .replace("{date}", &date)
             .replace("{ext}", ext)
             .replace("{source}", source)
+    }
+
+    /// Returns `true` if the destination template delegates to the AI pipeline.
+    pub fn is_ai_suggested(destination: &str) -> bool {
+        destination.contains(AI_SUGGEST_MARKER)
     }
 
     /// Get a reference to the internal rules slice.
@@ -468,6 +478,21 @@ rules:
             "Downloads",
         );
         assert!(engine.evaluate(&entry).is_none());
+    }
+
+    #[test]
+    fn is_ai_suggested_detects_marker() {
+        assert!(RuleEngine::is_ai_suggested("{ai_suggest}"));
+        assert!(RuleEngine::is_ai_suggested("{year}/{ai_suggest}"));
+        assert!(!RuleEngine::is_ai_suggested("Documents/PDFs"));
+        assert!(!RuleEngine::is_ai_suggested("{year}/{month}"));
+    }
+
+    #[test]
+    fn expand_destination_preserves_ai_suggest_marker() {
+        let entry = make_entry("file.pdf", Some("pdf"), 100, "/tmp/file.pdf", "Downloads");
+        let result = RuleEngine::expand_destination("{ai_suggest}", &entry);
+        assert_eq!(result, "{ai_suggest}");
     }
 
     #[test]
