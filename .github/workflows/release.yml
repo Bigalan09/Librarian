@@ -161,10 +161,16 @@ jobs:
 
           git add Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $VERSION"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
 
-          gh pr create \
-            --title "chore: bump version to $VERSION" \
-            --body "Automated version bump after release v$VERSION." \
-            --base main \
-            --head "$BRANCH"
+          # Reuse existing PR if the branch was re-pushed (e.g. after a rerun)
+          EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "PR #${EXISTING} already exists for ${BRANCH}"
+          else
+            gh pr create \
+              --title "chore: bump version to $VERSION" \
+              --body "Automated version bump after release v$VERSION." \
+              --base main \
+              --head "$BRANCH"
+          fi
