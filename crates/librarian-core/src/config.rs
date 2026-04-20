@@ -102,6 +102,35 @@ pub struct AppConfig {
     pub fewshot_count: u32,
     #[serde(default = "default_rule_suggestion_threshold")]
     pub rule_suggestion_threshold: u32,
+    /// Optional taxonomy of top-level categories to guide AI classification.
+    ///
+    /// Each entry is a category name (e.g. "Family") optionally followed by
+    /// subcategories. When provided, the LLM is instructed to organise files
+    /// into a 2-level hierarchy using these categories as guidance.
+    ///
+    /// Example YAML:
+    /// ```yaml
+    /// taxonomy:
+    ///   Family:
+    ///     - Health
+    ///     - Education
+    ///     - Records
+    ///   Finance:
+    ///     - Tax
+    ///     - Insurance
+    /// ```
+    #[serde(default)]
+    pub taxonomy: Taxonomy,
+}
+
+/// A suggested folder taxonomy for AI classification.
+///
+/// Maps top-level category names to optional lists of subcategories.
+/// When empty, the LLM uses its own judgement for folder structure.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Taxonomy {
+    pub categories: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 fn default_inbox_folders() -> Vec<PathBuf> {
@@ -153,7 +182,35 @@ impl Default for AppConfig {
             max_moves_per_run: 500,
             fewshot_count: 20,
             rule_suggestion_threshold: 3,
+            taxonomy: Taxonomy::default(),
         }
+    }
+}
+
+impl Taxonomy {
+    /// Whether a taxonomy has been configured.
+    pub fn is_empty(&self) -> bool {
+        self.categories.is_empty()
+    }
+
+    /// Format the taxonomy as a prompt-friendly string.
+    ///
+    /// Returns something like:
+    /// ```text
+    /// - Family: Health, Education, Records
+    /// - Finance: Tax, Insurance
+    /// - Home: Network, Maintenance
+    /// ```
+    pub fn to_prompt_string(&self) -> String {
+        let mut out = String::new();
+        for (category, subs) in &self.categories {
+            if subs.is_empty() {
+                out.push_str(&format!("- {category}\n"));
+            } else {
+                out.push_str(&format!("- {category}: {}\n", subs.join(", ")));
+            }
+        }
+        out
     }
 }
 
@@ -445,6 +502,41 @@ max_moves_per_run: 100
             !cfg.destination_root.starts_with("~"),
             "tilde should be expanded"
         );
+    }
+
+    #[test]
+    fn taxonomy_from_yaml() {
+        let yaml = r#"
+taxonomy:
+  Family:
+    - Health
+    - Education
+    - Records
+  Finance:
+    - Tax
+    - Insurance
+  Home: []
+"#;
+        let cfg: AppConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!cfg.taxonomy.is_empty());
+        assert_eq!(cfg.taxonomy.categories.len(), 3);
+        assert_eq!(
+            cfg.taxonomy.categories["Family"],
+            vec!["Health", "Education", "Records"]
+        );
+        assert!(cfg.taxonomy.categories["Home"].is_empty());
+
+        let prompt = cfg.taxonomy.to_prompt_string();
+        assert!(prompt.contains("Family: Health, Education, Records"));
+        assert!(prompt.contains("Finance: Tax, Insurance"));
+        assert!(prompt.contains("- Home"));
+    }
+
+    #[test]
+    fn taxonomy_defaults_to_empty() {
+        let yaml = "{}";
+        let cfg: AppConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.taxonomy.is_empty());
     }
 
     #[test]

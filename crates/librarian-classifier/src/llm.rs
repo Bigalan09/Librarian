@@ -33,8 +33,10 @@ impl LlmClassifier {
         file_entry: &FileEntry,
         existing_buckets: &[String],
         few_shot_examples: &[String],
+        taxonomy_hint: Option<&str>,
     ) -> anyhow::Result<LlmResult> {
-        let system_prompt = build_system_prompt(existing_buckets, few_shot_examples);
+        let system_prompt =
+            build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
         let user_prompt = build_user_prompt(file_entry);
 
         let messages = vec![
@@ -58,8 +60,10 @@ impl LlmClassifier {
         file_entry: &FileEntry,
         existing_buckets: &[String],
         few_shot_examples: &[String],
+        taxonomy_hint: Option<&str>,
     ) -> anyhow::Result<LlmResult> {
-        let system_prompt = build_system_prompt(existing_buckets, few_shot_examples);
+        let system_prompt =
+            build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
         let user_prompt = build_user_prompt(file_entry);
 
         let messages = vec![
@@ -79,20 +83,39 @@ impl LlmClassifier {
 }
 
 /// Build the system prompt for classification.
-fn build_system_prompt(existing_buckets: &[String], few_shot_examples: &[String]) -> String {
+fn build_system_prompt(
+    existing_buckets: &[String],
+    few_shot_examples: &[String],
+    taxonomy_hint: Option<&str>,
+) -> String {
     let mut prompt = String::from(
         "You are a file classification assistant. Your task is to determine the best \
          destination folder for a given file based on its name, extension, size, and \
          other metadata.\n\n\
          You MUST respond with valid JSON only, using this exact format:\n\
-         {\n  \"destination\": \"FolderName\",\n  \"confidence\": 0.85,\n  \
+         {\n  \"destination\": \"Category/Subcategory\",\n  \"confidence\": 0.85,\n  \
          \"tags\": [\"tag1\", \"tag2\"],\n  \"reason\": \"Brief explanation\"\n}\n\n\
          Rules:\n\
-         - \"destination\" must be a folder name (no path separators)\n\
+         - \"destination\" should be a 1- or 2-level folder path like \"Finance/Tax\" \
+         or \"Family/Health\". Use exactly one slash for subcategories. Never go deeper \
+         than 2 levels.\n\
+         - Choose meaningful, life-oriented categories (e.g. Family, Finance, Health, \
+         Home, Work, Education) rather than technical ones (e.g. 2026, Packages, \
+         Firmware). Year-based folders should only be used as subcategories when \
+         relevant, not as top-level catch-alls.\n\
          - \"confidence\" must be a float between 0.0 and 1.0\n\
          - \"tags\" must be an array of descriptive string tags\n\
          - \"reason\" must explain your classification decision\n",
     );
+
+    if let Some(taxonomy) = taxonomy_hint {
+        prompt.push_str(
+            "\nSuggested folder taxonomy (use these categories and subcategories \
+             as guidance, but you may create new ones if none fit):\n",
+        );
+        prompt.push_str(taxonomy);
+        prompt.push('\n');
+    }
 
     if !existing_buckets.is_empty() {
         prompt.push_str("\nExisting destination folders:\n");
@@ -188,7 +211,7 @@ mod tests {
             "Photos".to_string(),
             "Invoices".to_string(),
         ];
-        let prompt = build_system_prompt(&buckets, &[]);
+        let prompt = build_system_prompt(&buckets, &[], None);
 
         assert!(prompt.contains("Documents"));
         assert!(prompt.contains("Photos"));
@@ -202,7 +225,7 @@ mod tests {
             "invoice_2024.pdf -> Invoices (confidence: 0.95)".to_string(),
             "photo_001.jpg -> Photos (confidence: 0.90)".to_string(),
         ];
-        let prompt = build_system_prompt(&[], &examples);
+        let prompt = build_system_prompt(&[], &examples, None);
 
         assert!(prompt.contains("invoice_2024.pdf"));
         assert!(prompt.contains("photo_001.jpg"));
@@ -213,7 +236,7 @@ mod tests {
     fn system_prompt_includes_both() {
         let buckets = vec!["Documents".to_string()];
         let examples = vec!["readme.md -> Documents".to_string()];
-        let prompt = build_system_prompt(&buckets, &examples);
+        let prompt = build_system_prompt(&buckets, &examples, None);
 
         assert!(prompt.contains("Existing destination folders"));
         assert!(prompt.contains("Examples of previous classifications"));
@@ -221,7 +244,7 @@ mod tests {
 
     #[test]
     fn system_prompt_empty_context() {
-        let prompt = build_system_prompt(&[], &[]);
+        let prompt = build_system_prompt(&[], &[], None);
         assert!(prompt.contains("file classification assistant"));
         assert!(!prompt.contains("Existing destination folders"));
         assert!(!prompt.contains("Examples of previous classifications"));
@@ -415,6 +438,7 @@ mod tests {
             &entry,
             &["Work".to_string(), "Personal".to_string()],
             &[],
+            None,
         )
         .await
         .unwrap();
@@ -433,7 +457,7 @@ mod tests {
         };
         let erased: &dyn ErasedProvider = &provider;
         let entry = make_test_entry();
-        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[])
+        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[], None)
             .await
             .unwrap();
 
@@ -448,9 +472,10 @@ mod tests {
         };
         let entry = make_test_entry();
         let examples = vec!["report.pdf was moved to Personal".to_string()];
-        let result = LlmClassifier::classify(&provider, &entry, &["Work".to_string()], &examples)
-            .await
-            .unwrap();
+        let result =
+            LlmClassifier::classify(&provider, &entry, &["Work".to_string()], &examples, None)
+                .await
+                .unwrap();
 
         assert_eq!(result.destination, "Personal");
     }
@@ -459,7 +484,7 @@ mod tests {
     async fn classify_propagates_chat_error() {
         let provider = FailingChatProvider;
         let entry = make_test_entry();
-        let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await;
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[], None).await;
         assert!(result.is_err());
         assert!(
             result
@@ -476,7 +501,7 @@ mod tests {
         let provider = FailingChatProvider;
         let erased: &dyn ErasedProvider = &provider;
         let entry = make_test_entry();
-        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[]).await;
+        let result = LlmClassifier::classify_dyn(erased, &entry, &[], &[], None).await;
         assert!(result.is_err());
     }
 
@@ -486,7 +511,7 @@ mod tests {
             response: "I cannot classify this file.".to_string(),
         };
         let entry = make_test_entry();
-        let result = LlmClassifier::classify(&provider, &entry, &[], &[]).await;
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[], None).await;
         assert!(result.is_err());
     }
 
@@ -496,9 +521,25 @@ mod tests {
             response: "Here is the result:\n```json\n{\"destination\": \"Docs\", \"confidence\": 0.75, \"tags\": [], \"reason\": \"Document file\"}\n```".to_string(),
         };
         let entry = make_test_entry();
-        let result = LlmClassifier::classify(&provider, &entry, &[], &[])
+        let result = LlmClassifier::classify(&provider, &entry, &[], &[], None)
             .await
             .unwrap();
         assert_eq!(result.destination, "Docs");
+    }
+
+    #[test]
+    fn system_prompt_includes_taxonomy() {
+        let taxonomy = "- Family: Health, Education\n- Finance: Tax, Insurance\n";
+        let prompt = build_system_prompt(&[], &[], Some(taxonomy));
+        assert!(prompt.contains("Family: Health, Education"));
+        assert!(prompt.contains("Finance: Tax, Insurance"));
+        assert!(prompt.contains("Suggested folder taxonomy"));
+    }
+
+    #[test]
+    fn system_prompt_encourages_hierarchical_paths() {
+        let prompt = build_system_prompt(&[], &[], None);
+        assert!(prompt.contains("Category/Subcategory"));
+        assert!(!prompt.contains("no path separators"));
     }
 }

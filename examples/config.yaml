@@ -130,3 +130,38 @@ fewshot_count: 20
 # Librarian will suggest adding a rule to rules.yaml to automate the pattern.
 # Default: 3
 rule_suggestion_threshold: 3
+
+# ---------------------------------------------------------------------------
+# Taxonomy
+# ---------------------------------------------------------------------------
+# Suggested folder hierarchy for AI classification.  When set, the LLM uses
+# these categories and subcategories as guidance when deciding where to place
+# files.  It will create a 2-level folder structure like "Family/Health".
+#
+# You can add or remove categories to match your life.  The AI may still
+# create new categories if none of these fit a particular file.
+# Default: empty (LLM uses its own judgement)
+#
+# taxonomy:
+#   Family:
+#     - Health
+#     - Education
+#     - Records
+#   Finance:
+#     - Tax
+#     - Insurance
+#     - Receipts
+#   Home:
+#     - Network
+#     - Maintenance
+#     - Appliances
+#   Work:
+#     - Projects
+#     - Contracts
+#   Personal:
+#     - Photos
+#     - Documents
+#   Software:
+#     - Installers
+#     - Firmware
+#     - Configs

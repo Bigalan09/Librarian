@@ -74,6 +74,7 @@ impl ClassificationPipeline {
         existing_buckets: &[String],
         few_shot_examples: &[String],
         vector_store: Option<&dyn VectorStore>,
+        taxonomy_hint: Option<&str>,
     ) -> ClassificationResult {
         // --- Tier 1: Rules engine ---
         // When a rule matches, check whether its destination delegates to the AI
@@ -188,9 +189,14 @@ impl ClassificationPipeline {
         }
 
         // --- Tier 5: LLM classifier ---
-        let result =
-            match LlmClassifier::classify_dyn(provider, entry, existing_buckets, few_shot_examples)
-                .await
+        let result = match LlmClassifier::classify_dyn(
+            provider,
+            entry,
+            existing_buckets,
+            few_shot_examples,
+            taxonomy_hint,
+        )
+        .await
             {
                 Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
                 Err(e) => {
@@ -543,6 +549,7 @@ rules:
             &[],
             &[],
             None,
+            None,
         )
         .await;
 
@@ -570,6 +577,7 @@ rules:
             &mut cache,
             &["Documents".to_string()],
             &[],
+            None,
             None,
         )
         .await;
@@ -599,6 +607,7 @@ rules:
             &[],
             &[],
             None,
+            None,
         )
         .await;
 
@@ -624,6 +633,7 @@ rules:
             &mut cache,
             &buckets,
             &[],
+            None,
             None,
         )
         .await;
@@ -659,6 +669,7 @@ rules:
             &["Documents".to_string()],
             &[],
             Some(&vs),
+            None,
         )
         .await;
 
@@ -690,6 +701,7 @@ rules:
             &mut cache,
             &[],
             &examples,
+            None,
             None,
         )
         .await;
@@ -765,6 +777,7 @@ rules:
             &["Finance".to_string()],
             &[],
             None,
+            None,
         )
         .await;
 
@@ -792,6 +805,7 @@ rules:
             &[],
             &[],
             None,
+            None,
         )
         .await;
 
@@ -816,6 +830,7 @@ rules:
             &mut cache,
             &[],
             &[],
+            None,
             None,
         )
         .await;
@@ -852,6 +867,7 @@ rules:
             &[],
             &[],
             None,
+            None,
         )
         .await;
 
@@ -885,6 +901,7 @@ rules:
             &["Docs".to_string()],
             &[],
             Some(&vs),
+            None,
         )
         .await;
 
@@ -921,6 +938,7 @@ rules:
             &mut cache,
             &[],
             &[],
+            None,
             None,
         )
         .await;

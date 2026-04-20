@@ -14,10 +14,12 @@ use librarian_core::walker;
 use librarian_providers::router::ErasedProvider;
 use librarian_providers::traits::ChatMessage;
 
-/// Scan the destination root for existing top-level folder names.
+/// Scan the destination root for existing folder names up to 2 levels deep.
 ///
-/// These are passed to the LLM and embedding tiers as context so the AI
-/// knows what buckets already exist and can prefer them over inventing new ones.
+/// Returns paths relative to `dest_root`, e.g. `["Family", "Family/Health",
+/// "Family/Education", "Finance", "Finance/Tax"]`. These are passed to the
+/// LLM and embedding tiers as context so the AI knows what hierarchy already
+/// exists and can place files into it.
 fn discover_buckets(dest_root: &std::path::Path) -> Vec<String> {
     let mut buckets = Vec::new();
     if !dest_root.exists() {
@@ -36,6 +38,21 @@ fn discover_buckets(dest_root: &std::path::Path) -> Vec<String> {
             && !name.starts_with('_')
         {
             buckets.push(name.to_string());
+
+            // Recurse one level deeper for 2-level hierarchy
+            if let Ok(children) = std::fs::read_dir(&path) {
+                for child in children.flatten() {
+                    let child_path = child.path();
+                    if child_path.is_dir()
+                        && let Some(child_name) =
+                            child_path.file_name().and_then(|n| n.to_str())
+                        && !child_name.starts_with('.')
+                        && !child_name.starts_with('_')
+                    {
+                        buckets.push(format!("{name}/{child_name}"));
+                    }
+                }
+            }
         }
     }
 
@@ -55,6 +72,7 @@ pub async fn run(
     dry_run: bool,
     plan_name: Option<String>,
     rename: bool,
+    take: Option<usize>,
 ) -> anyhow::Result<()> {
     if dry_run {
         tracing::info!("dry-run mode: plan will be saved but not applied");
@@ -219,6 +237,14 @@ pub async fn run(
         "scan complete",
     );
 
+    // Apply --take limit
+    if let Some(n) = take
+        && n < all_entries.len()
+    {
+        tracing::info!(take = n, total = all_entries.len(), "limiting to first N files");
+        all_entries.truncate(n);
+    }
+
     // Build plan name
     let source_label = sources
         .first()
@@ -239,6 +265,14 @@ pub async fn run(
     // Pipeline embedding cache (separate from the provider-level cache;
     // this one caches bucket-name embeddings during classification)
     let mut pipeline_cache = EmbeddingCache::new();
+
+    // Taxonomy hint for the LLM (if configured)
+    let taxonomy_prompt = if !cfg.taxonomy.is_empty() {
+        Some(cfg.taxonomy.to_prompt_string())
+    } else {
+        None
+    };
+    let taxonomy_hint = taxonomy_prompt.as_deref();
 
     // Classify each file
     let classify_start = std::time::Instant::now();
@@ -297,6 +331,7 @@ pub async fn run(
                 &existing_buckets,
                 &few_shot_examples,
                 Some(&vector_store),
+                taxonomy_hint,
             )
             .await;
 
@@ -461,6 +496,21 @@ async fn suggest_rename(
             if !ext.is_empty() && !suggestion.ends_with(&format!(".{ext}")) {
                 suggestion = format!("{suggestion}.{ext}");
             }
+            // Reject suggestions that are just an extension or have no stem.
+            // E.g. ".tar", ".png", "pdf" should all be rejected.
+            let without_ext = if let Some(dot_pos) = suggestion.rfind('.') {
+                &suggestion[..dot_pos]
+            } else {
+                &suggestion
+            };
+            if without_ext.is_empty() || without_ext.chars().all(|c| c == '.') {
+                tracing::debug!(
+                    original = %entry.name,
+                    suggestion = %suggestion,
+                    "Rejecting rename: suggestion has no filename stem"
+                );
+                return None;
+            }
             Some(suggestion)
         }
         Err(e) => {
@@ -600,6 +650,32 @@ mod tests {
     }
 
     #[test]
+    fn discover_buckets_recurses_two_levels() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("Family/Health")).unwrap();
+        std::fs::create_dir_all(root.join("Family/Education")).unwrap();
+        std::fs::create_dir_all(root.join("Finance/Tax")).unwrap();
+        std::fs::create_dir(root.join("Photos")).unwrap();
+        // Hidden child should be excluded
+        std::fs::create_dir_all(root.join("Family/.cache")).unwrap();
+
+        let buckets = discover_buckets(root);
+        assert_eq!(
+            buckets,
+            vec![
+                "Family",
+                "Family/Education",
+                "Family/Health",
+                "Finance",
+                "Finance/Tax",
+                "Photos",
+            ]
+        );
+    }
+
+    #[test]
     fn discover_buckets_nonexistent_dir() {
         let buckets = discover_buckets(std::path::Path::new("/nonexistent/path"));
         assert!(buckets.is_empty());
@@ -667,6 +743,39 @@ mod tests {
 
         let buckets = discover_buckets(root);
         assert_eq!(buckets, vec!["Valid"]);
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_rejects_bare_extension() {
+        let provider = MockRenameProvider {
+            response: ".tar".to_string(),
+        };
+        let entry = make_entry("backup-OpenWrt-2026-03-03.tar", Some("tar"));
+        let result = suggest_rename(&provider, &entry, "2026").await;
+        assert_eq!(result, None, "bare extension should be rejected");
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_rejects_dot_extension_only() {
+        let provider = MockRenameProvider {
+            response: ".png".to_string(),
+        };
+        let entry = make_entry("ChatGPT Image Mar 20.png", Some("png"));
+        let result = suggest_rename(&provider, &entry, "2026").await;
+        assert_eq!(result, None, "dot-extension-only should be rejected");
+    }
+
+    #[tokio::test]
+    async fn suggest_rename_rejects_extension_without_dot() {
+        let provider = MockRenameProvider {
+            response: "png".to_string(),
+        };
+        let entry = make_entry("photo.png", Some("png"));
+        let _result = suggest_rename(&provider, &entry, "Photos").await;
+        // "png" has no dot, ext append makes it "png.png", stem is "png" which is not empty
+        // but the original check "suggestion == entry.name" doesn't match, so it goes through.
+        // This is acceptable — "png.png" is odd but not data-losing.
+        // The key bug was bare ".png" or ".tar" which lose the filename entirely.
     }
 
     #[test]

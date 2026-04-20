@@ -72,6 +72,10 @@ enum Commands {
         /// Also propose renames
         #[arg(long)]
         rename: bool,
+
+        /// Only process the first N files (useful for testing or incremental runs)
+        #[arg(long, value_name = "N")]
+        take: Option<usize>,
     },
 
     /// Execute a previously generated plan
@@ -282,6 +286,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             plan_name,
             rename,
+            take,
         } => {
             commands::process::run(
                 source,
@@ -294,6 +299,7 @@ async fn main() -> anyhow::Result<()> {
                 dry_run,
                 plan_name,
                 rename,
+                take,
             )
             .await
         }
