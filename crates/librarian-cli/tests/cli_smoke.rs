@@ -719,6 +719,60 @@ fn correct_moves_file_and_records() {
 }
 
 // ---------------------------------------------------------------------------
+// Correct moves a directory (folder as atomic unit)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn correct_moves_directory() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join(".librarian");
+    let inbox = home.join("inbox");
+    let dest = home.join("managed");
+    std::fs::create_dir_all(home.join("history")).unwrap();
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let config = format!(
+        "inbox_folders:\n  - {}\ndestination_root: {}\n",
+        inbox.display(),
+        dest.display(),
+    );
+    std::fs::write(home.join("config.yaml"), &config).unwrap();
+
+    // Create a source directory with contents
+    let folder = inbox.join("MyProject");
+    std::fs::create_dir_all(folder.join("src")).unwrap();
+    std::fs::write(folder.join("README.md"), "# My Project").unwrap();
+    std::fs::write(folder.join("src/main.rs"), "fn main() {}").unwrap();
+
+    let correct_dest = dest.join("Projects/MyProject");
+
+    librarian()
+        .args([
+            "correct",
+            folder.to_str().unwrap(),
+            "--to",
+            correct_dest.to_str().unwrap(),
+        ])
+        .env("HOME", dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Correction recorded"));
+
+    // Directory should be moved
+    assert!(!folder.exists());
+    assert!(correct_dest.exists());
+    assert!(correct_dest.join("README.md").exists());
+    assert!(correct_dest.join("src/main.rs").exists());
+
+    // Correction should be in the log
+    let corrections_path = home.join("history/corrections.jsonl");
+    assert!(corrections_path.exists());
+    let corrections = std::fs::read_to_string(&corrections_path).unwrap();
+    assert!(corrections.contains("MyProject"));
+}
+
+// ---------------------------------------------------------------------------
 // Correct with retag only (no move)
 // ---------------------------------------------------------------------------
 

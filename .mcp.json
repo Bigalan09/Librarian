@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "librarian": {
+      "command": "bun",
+      "args": ["run", "./mcp-server/index.ts"]
+    }
+  }
+}
