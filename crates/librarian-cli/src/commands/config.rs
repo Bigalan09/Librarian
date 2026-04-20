@@ -19,7 +19,10 @@ pub async fn edit() -> anyhow::Result<()> {
     }
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
-    let status = std::process::Command::new(&editor)
+    let mut parts = editor.split_whitespace();
+    let program = parts.next().unwrap_or("vi");
+    let status = std::process::Command::new(program)
+        .args(parts)
         .arg(&config_path)
         .status()?;
 
