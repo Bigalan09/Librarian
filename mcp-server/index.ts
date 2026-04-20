@@ -140,9 +140,9 @@ server.tool(
 
 server.tool(
   "librarian_correct",
-  "Record a manual correction so Librarian learns from the mistake",
+  "Record a manual correction so Librarian learns from the mistake (works with files and folders)",
   {
-    file: z.string().describe("Path to the incorrectly placed file"),
+    file: z.string().describe("Path to the incorrectly placed file or folder"),
     to: z.string().describe("Correct destination path"),
   },
   async ({ file, to }) =>

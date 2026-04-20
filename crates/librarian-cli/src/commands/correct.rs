@@ -27,18 +27,30 @@ pub async fn run(file: PathBuf, to: Option<PathBuf>, retag: Option<String>) -> a
         );
     }
 
-    // Find the file in the decision log to get the original placement
-    let file_hash = librarian_core::hasher::hash_file_sync(&file)?;
+    let is_dir = file.is_dir();
+
+    // Find the file in the decision log to get the original placement.
+    // Directories don't have content hashes — look them up by path instead.
+    let file_hash = if is_dir {
+        String::new()
+    } else {
+        librarian_core::hasher::hash_file_sync(&file)?
+    };
+
     let decisions = read_decisions(&decisions_path)?;
 
-    let original_decision = decisions.iter().rev().find(|d| d.file_hash == file_hash);
+    let original_decision = if is_dir {
+        decisions.iter().rev().find(|d| d.file_path == file)
+    } else {
+        decisions.iter().rev().find(|d| d.file_hash == file_hash)
+    };
 
     let original_path = match original_decision {
         Some(d) => d.file_path.clone(),
         None => {
             tracing::warn!(
-                "File hash {} not found in decision log; recording correction anyway",
-                file_hash
+                "Path {} not found in decision log; recording correction anyway",
+                file.display()
             );
             file.clone()
         }
