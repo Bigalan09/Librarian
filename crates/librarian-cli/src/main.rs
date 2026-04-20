@@ -212,14 +212,16 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum PlansAction {
+    /// List all plans
+    List,
     /// Show plan details
     Show {
-        /// Plan name
+        /// Plan name or ID
         name: String,
     },
     /// Delete a plan
     Delete {
-        /// Plan name
+        /// Plan name or ID
         name: String,
     },
     /// Remove plans older than N days (default: 30)
@@ -312,6 +314,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Rollback { plan } => commands::rollback::run(plan).await,
         Commands::Status => commands::status::run().await,
         Commands::Plans { action } => match action {
+            Some(PlansAction::List) => commands::plans::list().await,
             Some(PlansAction::Show { name }) => commands::plans::show(&name).await,
             Some(PlansAction::Delete { name }) => commands::plans::delete(&name).await,
             Some(PlansAction::Clean { days }) => commands::plans::clean(days).await,

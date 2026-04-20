@@ -31,10 +31,32 @@ pub(crate) fn resolve_plan_path(
     name: &str,
 ) -> anyhow::Result<std::path::PathBuf> {
     if name == LATEST_ALIAS {
-        most_recent_plan(plans_dir)
-    } else {
-        Ok(plans_dir.join(format!("{name}.json")))
+        return most_recent_plan(plans_dir);
     }
+
+    let name = name.strip_suffix(".json").unwrap_or(name);
+
+    // Try direct ID match first.
+    let direct = plans_dir.join(format!("{name}.json"));
+    if direct.exists() {
+        return Ok(direct);
+    }
+
+    // Fall back to matching by plan name field inside JSON files.
+    if plans_dir.exists() {
+        use librarian_core::plan::Plan;
+        if let Ok(plans) = Plan::list(plans_dir)
+            && let Some(plan) = plans.iter().find(|p| p.name == name)
+        {
+            let path = plans_dir.join(format!("{}.json", plan.id));
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
+    // Return the direct path anyway (will error downstream with a clear message).
+    Ok(direct)
 }
 
 fn most_recent_plan(plans_dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
