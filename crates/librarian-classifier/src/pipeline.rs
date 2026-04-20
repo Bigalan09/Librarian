@@ -197,22 +197,22 @@ impl ClassificationPipeline {
             taxonomy_hint,
         )
         .await
-            {
-                Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
-                Err(e) => {
-                    debug!(file = %entry.name, error = %e, "LLM classification failed");
-                    ClassificationResult {
-                        destination: PathBuf::from("NeedsReview"),
-                        method: ClassificationMethod::None,
-                        confidence: None,
-                        tags: Vec::new(),
-                        colour: None,
-                        reason: Some(format!("All classification tiers failed: {e}")),
-                        needs_review: true,
-                        filename_embedding: None,
-                    }
+        {
+            Ok(llm_result) => build_llm_result(entry, &llm_result, gate),
+            Err(e) => {
+                debug!(file = %entry.name, error = %e, "LLM classification failed");
+                ClassificationResult {
+                    destination: PathBuf::from("NeedsReview"),
+                    method: ClassificationMethod::None,
+                    confidence: None,
+                    tags: Vec::new(),
+                    colour: None,
+                    reason: Some(format!("All classification tiers failed: {e}")),
+                    needs_review: true,
+                    filename_embedding: None,
                 }
-            };
+            }
+        };
 
         merge_rule_metadata(result, rule_tags, rule_colour, rule_hint)
     }

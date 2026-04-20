@@ -44,8 +44,7 @@ fn discover_buckets(dest_root: &std::path::Path) -> Vec<String> {
                 for child in children.flatten() {
                     let child_path = child.path();
                     if child_path.is_dir()
-                        && let Some(child_name) =
-                            child_path.file_name().and_then(|n| n.to_str())
+                        && let Some(child_name) = child_path.file_name().and_then(|n| n.to_str())
                         && !child_name.starts_with('.')
                         && !child_name.starts_with('_')
                     {
@@ -241,7 +240,11 @@ pub async fn run(
     if let Some(n) = take
         && n < all_entries.len()
     {
-        tracing::info!(take = n, total = all_entries.len(), "limiting to first N files");
+        tracing::info!(
+            take = n,
+            total = all_entries.len(),
+            "limiting to first N files"
+        );
         all_entries.truncate(n);
     }
 

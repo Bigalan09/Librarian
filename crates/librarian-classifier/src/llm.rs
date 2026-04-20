@@ -35,8 +35,7 @@ impl LlmClassifier {
         few_shot_examples: &[String],
         taxonomy_hint: Option<&str>,
     ) -> anyhow::Result<LlmResult> {
-        let system_prompt =
-            build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
+        let system_prompt = build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
         let user_prompt = build_user_prompt(file_entry);
 
         let messages = vec![
@@ -62,8 +61,7 @@ impl LlmClassifier {
         few_shot_examples: &[String],
         taxonomy_hint: Option<&str>,
     ) -> anyhow::Result<LlmResult> {
-        let system_prompt =
-            build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
+        let system_prompt = build_system_prompt(existing_buckets, few_shot_examples, taxonomy_hint);
         let user_prompt = build_user_prompt(file_entry);
 
         let messages = vec![
