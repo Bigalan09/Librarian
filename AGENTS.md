@@ -23,7 +23,7 @@ Librarian is a Rust CLI that classifies and organises files from inbox folders (
 librarian-cli  (orchestration, clap commands)
   ├── librarian-classifier  (tiered classification pipeline)
   │     ├── librarian-rules      (deterministic glob/regex rule engine)
-  │     ├── librarian-providers  (AI provider abstraction: LM Studio, OpenAI)
+  │     ├── librarian-providers  (AI provider abstraction: LM Studio, OpenAI Responses API)
   │     └── librarian-core
   ├── librarian-learning   (correction tracking, centroid drift, few-shot selection)
   │     └── librarian-core
@@ -73,6 +73,10 @@ Gate result is `Accept { destination, confidence }`, `Escalate`, or `NeedsReview
 - Plan status is a one-way state machine: Draft -> Applied -> RolledBack
 - Learning is isolated per (source_inbox, filetype) tuple to prevent cross-folder data leakage
 - `--aggressive` flag on apply requires `--backup` to have been used (safety gate)
+- Folders in inbox are treated as atomic units: classified by name and moved whole, never recursed into
+- Taxonomy config enables hierarchical classification with parent/child folder structure
+- OpenAI provider uses the Responses API (`/v1/responses`), LM Studio uses Chat Completions (`/v1/chat/completions`)
+- Plan resolution accepts ID, friendly name, or `latest`; `.json` suffix is optional
 
 ## Error handling
 

@@ -134,6 +134,12 @@ The learning bit: when you correct a file, Librarian shifts its embedding centro
 
 After `librarian init`, edit `~/.librarian/config.yaml`:
 
+```sh
+librarian config edit   # opens in $EDITOR (defaults to vi)
+```
+
+Example configuration:
+
 ```yaml
 inbox_folders:
   - ~/Downloads
@@ -141,13 +147,23 @@ inbox_folders:
 destination_root: ~/Library-Managed
 
 provider:
-  provider_type: lmstudio    # or openai
-  base_url: http://localhost:1234/v1
+  provider_type: openai
+  api_key: "sk-..."
+  llm_model: "gpt-4o-mini"    # any OpenAI model
 
 thresholds:
   filename_embedding: 0.80
   content_embedding: 0.75
   llm_confidence: 0.70
+```
+
+For local models via LM Studio:
+
+```yaml
+provider:
+  provider_type: lmstudio
+  base_url: http://localhost:1234/v1
+  llm_model: "your-model-name"
 ```
 
 ## Commands
@@ -156,18 +172,22 @@ thresholds:
 |---------|-------------|
 | `init` | Scaffold config and folder structure |
 | `process --source <paths>` | Scan folders, classify files, produce a plan |
+| `process --take <N>` | Only process the first N files (useful for testing) |
 | `apply --plan <name> [--backup]` | Execute a plan |
 | `rollback --plan <name>` | Reverse an applied plan |
 | `status` | Show plans, recent runs, pending reviews |
-| `plans show <name>` | Inspect a plan |
+| `plans list` | List all saved plans |
+| `plans show <name>` | Inspect a plan (accepts ID, name, or `latest`) |
 | `plans delete <name>` | Delete a plan |
 | `plans clean --days 30` | Remove plans older than N days |
 | `rules validate` | Check your rules.yaml for errors |
 | `rules suggest` | Suggest new rules from correction history |
+| `suggest-structure` | Suggest a folder structure and rules using AI |
 | `correct <file> --to <path>` | Record a manual correction |
 | `watch` | Watch destination for manual corrections (passive learning) |
 | `review` | Walk through files that need human review |
 | `config show` | Print current config |
+| `config edit` | Open config in `$EDITOR` |
 | `update` / `upgrade` | Check for and install updates from GitHub |
 | `update --check` | Check for updates without installing |
 | `uninstall` | Remove Librarian and all its files from the system |
@@ -190,10 +210,8 @@ librarian uninstall --yes
 
 ## Providers
 
-Librarian works with any OpenAI-compatible API:
-
-- **[LM Studio](https://lmstudio.ai)** - run models locally, no API key needed (default)
-- **OpenAI** - set `provider_type: openai` and provide an `api_key`
+- **OpenAI** - uses the [Responses API](https://platform.openai.com/docs/api-reference/responses) (`/v1/responses`). Set `provider_type: openai` with an `api_key`
+- **[LM Studio](https://lmstudio.ai)** - run models locally via OpenAI-compatible Chat Completions API, no API key needed. Set `provider_type: lmstudio`
 
 ## Licence
 
