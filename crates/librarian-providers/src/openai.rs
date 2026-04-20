@@ -91,17 +91,6 @@ impl OpenAi {
         }
     }
 
-    /// Returns `true` for models that require `max_completion_tokens` instead of `max_tokens`.
-    fn needs_max_completion_tokens(model: &str) -> bool {
-        let m = model.to_lowercase();
-        m.starts_with("o1")
-            || m.starts_with("o3")
-            || m.starts_with("o4")
-            || m.starts_with("gpt-4o")
-            || m.starts_with("gpt-4.1")
-            || m.starts_with("chatgpt-4o")
-    }
-
     /// Create with custom base URL and client (for testing).
     #[cfg(test)]
     fn with_client(
@@ -197,10 +186,7 @@ struct ChatCompletionRequest {
     model: String,
     messages: Vec<ChatMessage>,
     temperature: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_completion_tokens: Option<u32>,
+    max_completion_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -283,21 +269,11 @@ impl Provider for OpenAi {
         debug!(model = %self.llm_model, "OpenAI chat request");
 
         let url = format!("{}/chat/completions", self.base_url);
-        let uses_max_completion_tokens = Self::needs_max_completion_tokens(&self.llm_model);
         let body = ChatCompletionRequest {
             model: self.llm_model.clone(),
             messages,
             temperature,
-            max_tokens: if uses_max_completion_tokens {
-                None
-            } else {
-                Some(max_tokens)
-            },
-            max_completion_tokens: if uses_max_completion_tokens {
-                Some(max_tokens)
-            } else {
-                None
-            },
+            max_completion_tokens: max_tokens,
         };
 
         let req = self
