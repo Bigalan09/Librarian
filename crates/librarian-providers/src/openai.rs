@@ -179,30 +179,36 @@ impl OpenAi {
     }
 }
 
-// --- API request/response types ---
+// --- API request/response types (Responses API) ---
 
 #[derive(Serialize)]
-struct ChatCompletionRequest {
+struct ResponsesRequest {
     model: String,
-    messages: Vec<ChatMessage>,
+    input: Vec<ResponsesInputItem>,
     temperature: f64,
-    max_completion_tokens: u32,
+    max_output_tokens: u32,
+}
+
+#[derive(Serialize)]
+struct ResponsesInputItem {
+    role: String,
+    content: String,
 }
 
 #[derive(Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatChoice>,
+struct ResponsesResponse {
+    output: Vec<ResponsesOutputItem>,
     model: String,
 }
 
 #[derive(Deserialize)]
-struct ChatChoice {
-    message: ChatChoiceMessage,
+struct ResponsesOutputItem {
+    content: Option<Vec<ResponsesContent>>,
 }
 
 #[derive(Deserialize)]
-struct ChatChoiceMessage {
-    content: String,
+struct ResponsesContent {
+    text: String,
 }
 
 #[derive(Serialize)]
@@ -266,14 +272,22 @@ impl Provider for OpenAi {
         max_tokens: u32,
     ) -> anyhow::Result<ChatResponse> {
         let start = std::time::Instant::now();
-        debug!(model = %self.llm_model, "OpenAI chat request");
+        debug!(model = %self.llm_model, "OpenAI Responses API request");
 
-        let url = format!("{}/chat/completions", self.base_url);
-        let body = ChatCompletionRequest {
+        let url = format!("{}/responses", self.base_url);
+        let input = messages
+            .into_iter()
+            .map(|m| ResponsesInputItem {
+                role: m.role,
+                content: m.content,
+            })
+            .collect();
+
+        let body = ResponsesRequest {
             model: self.llm_model.clone(),
-            messages,
+            input,
             temperature,
-            max_completion_tokens: max_tokens,
+            max_output_tokens: max_tokens,
         };
 
         let req = self
@@ -293,20 +307,23 @@ impl Provider for OpenAi {
             anyhow::bail!("OpenAI chat returned status {}: {}", status, text);
         }
 
-        let completion: ChatCompletionResponse = resp.json().await?;
-        let choice = completion
-            .choices
+        let response: ResponsesResponse = resp.json().await?;
+        let text = response
+            .output
             .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No choices in OpenAI response"))?;
+            .find_map(|item| {
+                item.content
+                    .and_then(|c| c.into_iter().next().map(|t| t.text))
+            })
+            .ok_or_else(|| anyhow::anyhow!("No text output in OpenAI response"))?;
 
         debug!(
             elapsed_ms = start.elapsed().as_millis() as u64,
             "OpenAI chat complete"
         );
         Ok(ChatResponse {
-            content: choice.message.content,
-            model: completion.model,
+            content: text,
+            model: response.model,
         })
     }
 
@@ -362,13 +379,13 @@ mod tests {
     async fn chat_mock() {
         let mut server = mockito::Server::new_async().await;
         let mock = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .match_header("authorization", "Bearer test-key")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-                    "choices": [{"message": {"role": "assistant", "content": "Hi from OpenAI"}}],
+                    "output": [{"type": "message", "content": [{"type": "output_text", "text": "Hi from OpenAI"}]}],
                     "model": "gpt-4o-mini"
                 }"#,
             )
@@ -428,7 +445,7 @@ mod tests {
     async fn handles_401_unauthorized() {
         let mut server = mockito::Server::new_async().await;
         let mock = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(401)
             .with_body(r#"{"error":{"message":"Invalid API key"}}"#)
             .create_async()
@@ -458,7 +475,7 @@ mod tests {
 
         // First call returns 429.
         let mock_429 = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(429)
             .with_header("retry-after", "1")
             .with_body(r#"{"error":{"message":"Rate limit exceeded"}}"#)
@@ -468,12 +485,12 @@ mod tests {
 
         // Second call (retry) returns 200.
         let mock_200 = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-                    "choices": [{"message": {"role": "assistant", "content": "Retried OK"}}],
+                    "output": [{"type": "message", "content": [{"type": "output_text", "text": "Retried OK"}]}],
                     "model": "gpt-4o-mini"
                 }"#,
             )
@@ -505,7 +522,7 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         // Should receive 3 requests: 1 original + 2 retries
         let mock = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(500)
             .with_body(r#"{"error":{"message":"Internal server error"}}"#)
             .expect(3)
@@ -536,7 +553,7 @@ mod tests {
 
         // First call returns 500
         let mock_500 = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(500)
             .with_body(r#"{"error":{"message":"Internal server error"}}"#)
             .expect(1)
@@ -545,12 +562,12 @@ mod tests {
 
         // Second call (retry) returns 200
         let mock_200 = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-                    "choices": [{"message": {"role": "assistant", "content": "Recovered"}}],
+                    "output": [{"type": "message", "content": [{"type": "output_text", "text": "Recovered"}]}],
                     "model": "gpt-4o-mini"
                 }"#,
             )
@@ -699,10 +716,10 @@ mod tests {
     async fn chat_empty_choices_returns_error() {
         let mut server = mockito::Server::new_async().await;
         let mock = server
-            .mock("POST", "/v1/chat/completions")
+            .mock("POST", "/v1/responses")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"choices":[],"model":"gpt-4o-mini"}"#)
+            .with_body(r#"{"output":[],"model":"gpt-4o-mini"}"#)
             .create_async()
             .await;
 
@@ -720,7 +737,7 @@ mod tests {
             content: "Hi".to_string(),
         }];
         let err = provider.chat(msgs, 0.7, 256).await.unwrap_err();
-        assert!(err.to_string().contains("No choices"));
+        assert!(err.to_string().contains("No text output"));
         mock.assert_async().await;
     }
 
