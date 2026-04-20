@@ -208,6 +208,67 @@ To skip the confirmation prompt:
 librarian uninstall --yes
 ```
 
+## MCP Server (for LLM agents)
+
+Librarian ships an [MCP](https://modelcontextprotocol.io) server so LLM agents like Claude can manage your files through natural conversation.
+
+### Install
+
+```sh
+cd mcp-server
+bun install
+```
+
+### Add to Claude Code
+
+In your project or user settings (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "librarian": {
+      "command": "bun",
+      "args": ["run", "/path/to/Librarian/mcp-server/index.ts"]
+    }
+  }
+}
+```
+
+### Add to Claude Desktop
+
+In `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "librarian": {
+      "command": "bun",
+      "args": ["run", "/path/to/Librarian/mcp-server/index.ts"]
+    }
+  }
+}
+```
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `librarian_status` | Show status: plans, reviews, config |
+| `librarian_process` | Scan and classify files, produce a plan |
+| `librarian_plans_list` | List all saved plans |
+| `librarian_plans_show` | Show plan details |
+| `librarian_apply` | Execute a plan (move files) |
+| `librarian_rollback` | Reverse an applied plan |
+| `librarian_correct` | Record a correction (files or folders) |
+| `librarian_rules_validate` | Check rules.yaml for errors |
+| `librarian_rules_suggest` | Suggest rules from correction history |
+| `librarian_config_show` | Show current configuration |
+| `librarian_plans_delete` | Delete a plan |
+| `librarian_plans_clean` | Remove old plans |
+| `librarian_suggest_structure` | AI-suggested folder structure |
+
+See [`mcp-server/README.md`](mcp-server/README.md) for more details and example conversations.
+
 ## Providers
 
 - **OpenAI** - uses the [Responses API](https://platform.openai.com/docs/api-reference/responses) (`/v1/responses`). Set `provider_type: openai` with an `api_key`
